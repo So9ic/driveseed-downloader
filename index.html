@@ -1738,8 +1738,10 @@
     }
 
     /* Pause sliding when hovering row */
-    .marquee-row-wrapper:hover .marquee-track {
-      animation-play-state: paused;
+    @media (hover: hover) and (min-width: 769px) {
+      .marquee-row-wrapper:hover .marquee-track {
+        animation-play-state: paused;
+      }
     }
 
     /* Toggle pause class for mobile/click */
