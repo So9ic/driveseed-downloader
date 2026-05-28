@@ -1832,8 +1832,8 @@
       margin-top: 6px;
     }
 
-    /* Wrap hover states in standard media queries so touch screens never trigger hover animations during page scroll */
-    @media (hover: hover) {
+    /* Wrap hover states in standard media queries so smaller screens or touch devices never trigger hover animations, using tap/click instead */
+    @media (hover: hover) and (min-width: 769px) {
       .movie-card.static-overlay:hover .poster-hover-overlay {
         background: linear-gradient(to top, rgba(7, 7, 11, 0.99) 0%, rgba(7, 7, 11, 0.75) 60%, rgba(7, 7, 11, 0.1) 100%) !important;
       }
