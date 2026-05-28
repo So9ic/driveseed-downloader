@@ -1,0 +1,1147 @@
+    let activeTab = 'search';
+    let currentCategory = 'All';
+    let isCloudMode = false;
+    let isResolvingNewDownload = false;
+    let activeSearchController = null;
+    let downloadsInterval = null;
+    let allFetchedResults = [];
+    let lastSearchQuery = '';
+    let trendingMoviesList = [];
+
+    // Startup Init
+    window.addEventListener('DOMContentLoaded', () => {
+      // Start polling status & downloads
+      pollStatus();
+      pollDownloads();
+      downloadsInterval = setInterval(() => {
+        pollDownloads();
+        pollStatus();
+      }, 1000);
+
+      // Hide status footer in cloud mode after first poll
+      setTimeout(() => {
+        if (isCloudMode) {
+          const footer = document.getElementById('status-bar-footer');
+          if (footer) footer.style.display = 'none';
+        }
+      }, 1500);
+
+      // Forcefully prevent pinch-to-zoom gestures on mobile devices
+      document.addEventListener('touchstart', (event) => {
+        if (event.touches.length > 1) {
+          event.preventDefault();
+        }
+      }, { passive: false });
+
+      // Forcefully prevent double-tap-to-zoom gestures on mobile devices
+      let lastTouchEnd = 0;
+      document.addEventListener('touchend', (event) => {
+        const now = (new Date()).getTime();
+        if (now - lastTouchEnd <= 300) {
+          event.preventDefault();
+        }
+        lastTouchEnd = now;
+      }, { passive: false });
+
+      // Fetch and render trending showcase marquee on home page
+      fetchAndRenderTrendingShowcase();
+    });
+
+    function goHome() {
+      // 1. Reset direct view navigation if nested
+      if (typeof goBackToMovie === 'function') {
+        goBackToMovie();
+      }
+      // 2. Close details pane if active
+      if (typeof closeDetails === 'function') {
+        closeDetails();
+      }
+      // 3. Switch back to search engine home tab
+      switchTab('search');
+    }
+
+    function switchTab(tab) {
+      activeTab = tab;
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.view-panel').forEach(panel => panel.classList.remove('active'));
+      
+      if (tab === 'search') {
+        document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
+        document.getElementById('search-view').classList.add('active');
+      } else {
+        document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
+        document.getElementById('direct-view').classList.add('active');
+        
+        // Hide details and cleanly restore search view elements under-the-hood
+        closeDetails();
+        
+        // Reset Direct tab back button & show the direct link input row
+        document.getElementById('direct-back-row').style.display = 'none';
+        document.querySelector('.direct-input-row').style.display = 'flex';
+      }
+    }
+
+    // ── Showcase Marquee API & Rendering ──
+    function fetchAndRenderTrendingShowcase() {
+      fetch('/api/trending')
+        .then(r => r.json())
+        .then(data => {
+          if (data.movies && data.movies.length > 0) {
+            trendingMoviesList = data.movies;
+            renderTrendingShowcase();
+          }
+        })
+        .catch(err => console.error("Failed to fetch trending movies:", err));
+    }
+
+    function renderTrendingShowcase() {
+      const q = document.getElementById('search-box').value.trim();
+      if (q.length >= 2) return; // Ignore if user is actively searching
+
+      const resultsDiv = document.getElementById('search-results');
+      if (!resultsDiv) return;
+
+      resultsDiv.style.display = 'block';
+
+      if (!trendingMoviesList || trendingMoviesList.length === 0) {
+        // Render 3 skeleton marquee rows while fetching
+        let rowsHtml = '';
+        for (let r = 0; r < 3; r++) {
+          const direction = (r % 2 === 0) ? 'left' : 'right';
+          const skeletonsHtml = Array.from({length: 8}).map(() => `
+            <div class="movie-card static-overlay skeleton-card" style="border: none;">
+              <div class="poster-wrap">
+                <div class="skeleton-img"></div>
+              </div>
+            </div>
+          `).join('');
+          
+          rowsHtml += `
+            <div class="marquee-row-wrapper">
+              <div class="marquee-track ${direction}">
+                <div class="marquee-group">${skeletonsHtml}</div>
+                <div class="marquee-group">${skeletonsHtml}</div>
+              </div>
+            </div>
+          `;
+        }
+        resultsDiv.innerHTML = `
+          <div class="trending-showcase-container">
+            ${rowsHtml}
+          </div>
+        `;
+        return;
+      }
+
+      // Split into 3 rows
+      const rowCount = 3;
+      const moviesPerRow = Math.ceil(trendingMoviesList.length / rowCount);
+      let rowsHtml = '';
+
+      for (let r = 0; r < rowCount; r++) {
+        const start = r * moviesPerRow;
+        const rowMovies = trendingMoviesList.slice(start, start + moviesPerRow);
+        if (rowMovies.length === 0) continue;
+
+        const direction = (r % 2 === 0) ? 'left' : 'right';
+        
+        const cardsHtml = rowMovies.map(movie => {
+          const catClass = movie.category.toLowerCase() === 'animeflix' ? 'anime' : movie.category.toLowerCase();
+          const categoryBadge = `<span class="cat-badge ${catClass}">${movie.category === 'ANIMEFLIX' ? 'ANIME' : movie.category}</span>`;
+          
+          const titleRaw = movie.title;
+          let mainTitle = titleRaw.split(/[({\[]/)[0].trim();
+          if (!mainTitle) mainTitle = titleRaw;
+          
+          let extraDetails = titleRaw.substring(mainTitle.length).trim();
+          
+          return `
+            <div class="movie-card static-overlay" data-category="${movie.category}" onclick="event.stopPropagation(); handleShowcaseCardClick(this, '${encodeURIComponent(JSON.stringify(movie))}')">
+              <div class="poster-wrap">
+                ${movie.thumbnail ? `<img src="/api/thumbnail?url=${encodeURIComponent(movie.thumbnail)}" class="poster-img" loading="lazy">` : `<div class="poster-placeholder"><i class="fa fa-film"></i></div>`}
+                <div class="poster-hover-overlay">
+                  <div class="hover-overlay-content">
+                    <span class="hover-overlay-main-title">${mainTitle}</span>
+                    ${extraDetails ? `<span class="hover-overlay-extra">${extraDetails}</span>` : ''}
+                  </div>
+                </div>
+              </div>
+              ${categoryBadge}
+            </div>
+          `;
+        }).join('');
+
+        rowsHtml += `
+          <div class="marquee-row-wrapper">
+            <div class="marquee-track ${direction}" onclick="toggleMarqueePause(this)">
+              <div class="marquee-group">${cardsHtml}</div>
+              <div class="marquee-group">${cardsHtml}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      resultsDiv.innerHTML = `
+        <div class="trending-showcase-container">
+          ${rowsHtml}
+        </div>
+      `;
+
+      // Apply current category filter if one is active
+      filterShowcaseByCategory(currentCategory);
+    }
+
+    function filterShowcaseByCategory(category) {
+      document.querySelectorAll('.movie-card.static-overlay').forEach(card => {
+        const cat = card.getAttribute('data-category');
+        if (category === 'All' || cat === category.toUpperCase() || (category === 'Anime' && cat === 'ANIMEFLIX')) {
+          card.classList.remove('hidden-card');
+        } else {
+          card.classList.add('hidden-card');
+        }
+      });
+    }
+
+    function toggleMarqueePause(track) {
+      track.classList.toggle('paused');
+    }
+
+    function selectCategory(cat) {
+      currentCategory = cat;
+      document.querySelectorAll('.cat-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.innerText.includes(cat)) btn.classList.add('active');
+      });
+      
+      const q = document.getElementById('search-box').value.trim();
+      
+      if (q.length < 2) {
+        filterShowcaseByCategory(cat);
+        return;
+      }
+      
+      // If we have cached results for the current search query, filter them locally instantly!
+      if (allFetchedResults.length > 0 && q.toLowerCase() === lastSearchQuery.toLowerCase()) {
+        filterAndRenderResultsLocally(q);
+      } else {
+        // Otherwise trigger a new search
+        triggerSearch();
+      }
+    }
+
+    function filterAndRenderResultsLocally(query) {
+      const resultsDiv = document.getElementById('search-results');
+      const detailPanel = document.getElementById('detail-panel');
+      
+      // Ensure search view is visible only if we aren't currently viewing the details page
+      if (detailPanel.style.display !== 'flex') {
+        detailPanel.style.display = 'none';
+        resultsDiv.style.display = 'grid';
+      }
+
+      let filtered = [];
+      if (currentCategory === 'All') {
+        filtered = [...allFetchedResults];
+      } else if (currentCategory === 'Hollywood') {
+        filtered = allFetchedResults.filter(item => (item.category || '').toUpperCase() === 'HOLLYWOOD');
+      } else if (currentCategory === 'Bollywood') {
+        filtered = allFetchedResults.filter(item => (item.category || '').toUpperCase() === 'BOLLYWOOD');
+      } else if (currentCategory === 'Anime') {
+        filtered = allFetchedResults.filter(item => (item.category || '').toUpperCase() === 'ANIMEFLIX');
+      }
+
+      // Sort items based on relevance matching the current query
+      filtered.sort((a, b) => {
+        const scoreA = getRelevanceScore(a.title, query, a.category);
+        const scoreB = getRelevanceScore(b.title, query, b.category);
+        return scoreA - scoreB;
+      });
+
+      if (filtered.length === 0) {
+        resultsDiv.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px;">No results found in this category.</div>';
+      } else {
+        renderGridItems(filtered);
+      }
+    }
+
+    let activeTappedCard = null;
+
+    function handleShowcaseCardClick(cardElement, movieJsonString) {
+      // 1. Desktop view: directly view details
+      if (window.innerWidth > 768) {
+        viewDetails(movieJsonString);
+        return;
+      }
+
+      // 2. Mobile view: first tap stops row and reveals details, second tap opens details
+      if (activeTappedCard === cardElement) {
+        // Second tap on the same card -> Navigate!
+        viewDetails(movieJsonString);
+        resetActiveTappedCard();
+      } else {
+        // First tap on a new card or switching cards
+        resetActiveTappedCard();
+
+        // Set new active card
+        activeTappedCard = cardElement;
+        cardElement.classList.add('active-tap');
+
+        // Pause the parent marquee track
+        const track = cardElement.closest('.marquee-track');
+        if (track) {
+          track.classList.add('paused');
+        }
+      }
+    }
+
+    function resetActiveTappedCard() {
+      if (activeTappedCard) {
+        activeTappedCard.classList.remove('active-tap');
+        
+        // Resume any paused marquee tracks
+        const track = activeTappedCard.closest('.marquee-track');
+        if (track) {
+          track.classList.remove('paused');
+        }
+        
+        activeTappedCard = null;
+      }
+    }
+
+    // Global click listener to reset tapped cards when clicking elsewhere
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.movie-card.static-overlay')) {
+        resetActiveTappedCard();
+      }
+    }, true);
+
+    function clearSearch() {
+      const searchBox = document.getElementById('search-box');
+      if (searchBox) {
+        searchBox.value = '';
+        toggleClearButton();
+        triggerSearch();
+      }
+    }
+
+    function toggleClearButton() {
+      const searchBox = document.getElementById('search-box');
+      const clearBtn = document.getElementById('clear-search-btn');
+      if (searchBox && clearBtn) {
+        if (searchBox.value.length > 0) {
+          clearBtn.style.display = 'flex';
+        } else {
+          clearBtn.style.display = 'none';
+        }
+      }
+    }
+
+    // Debounced Search triggers
+    let searchDebounceTimer = null;
+    function onSearchKeyup(e) {
+      toggleClearButton();
+      if (e.key === 'Enter') {
+        clearTimeout(searchDebounceTimer);
+        triggerSearch();
+      } else {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(triggerSearch, 500);
+      }
+    }
+
+    function triggerSearch() {
+      toggleClearButton();
+      const q = document.getElementById('search-box').value.trim();
+      const resultsDiv = document.getElementById('search-results');
+      const detailPanel = document.getElementById('detail-panel');
+      
+      // Close details and reset background when searching again
+      const bgElement = document.getElementById('details-page-bg');
+      if (bgElement) bgElement.style.opacity = '0';
+      document.querySelector('.search-bar-row').style.display = 'block';
+      document.querySelector('.categories-row').style.display = 'flex';
+      document.querySelector('.tabs-container').style.display = 'flex';
+      
+      detailPanel.style.display = 'none';
+      resultsDiv.style.display = 'grid';
+
+      if (q.length < 2) {
+        allFetchedResults = [];
+        lastSearchQuery = '';
+        renderTrendingShowcase();
+        return;
+      }
+
+      // Abort active streaming search request
+      if (activeSearchController) {
+        activeSearchController.abort();
+      }
+
+      // Reset cache and track new query
+      allFetchedResults = [];
+      lastSearchQuery = q;
+
+      // Render search skeletons loading states
+      resultsDiv.innerHTML = Array.from({length: 6}).map(() => `
+        <div class="movie-card skeleton-card">
+          <div class="poster-wrap">
+            <div class="skeleton-img"></div>
+          </div>
+          <div class="movie-details">
+            <div class="skeleton-text" style="width: 80%; margin-bottom: 6px;"></div>
+            <div class="skeleton-text" style="width: 40%;"></div>
+          </div>
+        </div>
+      `).join('');
+
+      activeSearchController = new AbortController();
+      const signal = activeSearchController.signal;
+      // We always request 'All' categories from the server to cache them for instantaneous switching!
+      const url = `/api/search/stream?q=${encodeURIComponent(q)}&cat=All`;
+
+      // Connect using Server-Sent Events for concurrent realtime streaming!
+      const eventSource = new EventSource(url);
+      
+      eventSource.onmessage = function(event) {
+        if (signal.aborted) {
+          eventSource.close();
+          return;
+        }
+        
+        try {
+          const data = JSON.parse(event.data);
+          
+          if (data.status === 'done') {
+            eventSource.close();
+            if (allFetchedResults.length === 0) {
+              resultsDiv.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px;">No results found.</div>';
+            } else {
+              // Final filter and redraw
+              filterAndRenderResultsLocally(q);
+            }
+            return;
+          }
+
+          if (data.status === 'error') {
+            eventSource.close();
+            resultsDiv.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--crimson); padding: 40px;">Error: ${data.message}</div>`;
+            return;
+          }
+
+          if (data.item) {
+            // Append this item to the cache instantly
+            const item = data.item;
+            allFetchedResults.push(item);
+            
+            // Render the currently selected category items in real-time
+            filterAndRenderResultsLocally(q);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      eventSource.onerror = function() {
+        eventSource.close();
+      };
+    }
+
+    function getRelevanceScore(title, query, category) {
+      const t = title.toLowerCase();
+      const q = query.toLowerCase();
+      let score = 100;
+      
+      if (t === q) score -= 90;
+      else if (t.startsWith(q)) score -= 70;
+      else if (t.includes(q)) score -= 50;
+      
+      // Category priorities
+      if (category.toLowerCase() === 'hollywood') score -= 5;
+      else if (category.toLowerCase() === 'bollywood') score -= 2;
+      
+      return score;
+    }
+
+    function renderGridItems(items) {
+      const resultsDiv = document.getElementById('search-results');
+      resultsDiv.innerHTML = items.map(item => {
+        const titleRaw = item.title;
+        // Split on the first bracket, brace, or parentheses to get the crisp, clean movie name
+        let mainTitle = titleRaw.split(/[({\[]/)[0].trim();
+        if (!mainTitle) mainTitle = titleRaw;
+        
+        let extraDetails = titleRaw.substring(mainTitle.length).trim();
+        
+        // Dynamically compute the absolute best main title font size based on its length
+        let mainTitleFontSize = 'font-size: 16.5px;';
+        if (mainTitle.length > 30) {
+          mainTitleFontSize = 'font-size: 13px;';
+        } else if (mainTitle.length > 20) {
+          mainTitleFontSize = 'font-size: 14.5px;';
+        }
+        
+        // Dynamically compute the absolute best extra details font size based on its length
+        let extraFontSize = 'font-size: 11.5px;';
+        if (extraDetails.length > 80) {
+          extraFontSize = 'font-size: 9px;';
+        } else if (extraDetails.length > 50) {
+          extraFontSize = 'font-size: 10px;';
+        }
+
+        return `
+          <div class="movie-card" onclick="viewDetails('${encodeURIComponent(JSON.stringify(item))}')">
+            <div class="poster-wrap">
+              <span class="cat-badge ${item.category.toLowerCase()}">${item.category}</span>
+              ${item.thumbnail ? `<img class="poster-img" src="/api/thumbnail?url=${encodeURIComponent(item.thumbnail)}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">` : ''}
+              <div class="poster-placeholder" style="${item.thumbnail ? 'display:none;' : ''}">🎬</div>
+            </div>
+            <div class="poster-hover-overlay">
+              ${item.thumbnail ? `<img class="hover-bg-img" src="/api/thumbnail?url=${encodeURIComponent(item.thumbnail)}" loading="lazy">` : `<div class="hover-bg-img poster-placeholder">🎬</div>`}
+              <div class="hover-overlay-gradient"></div>
+              <div class="hover-overlay-content">
+                <div class="hover-overlay-main-title" style="${mainTitleFontSize}">${mainTitle}</div>
+                ${extraDetails ? `<div class="hover-overlay-extra" style="${extraFontSize}">${extraDetails}</div>` : ''}
+              </div>
+            </div>
+            <div class="movie-details">
+              <div class="movie-title" title="${item.title}">${item.title}</div>
+              <div class="movie-meta">
+                <span>ModList</span>
+                <span>Online</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function parseQualityTitle(title) {
+      let originalTitle = title;
+      
+      // 1. Size extraction: e.g. [200MB] or (200MB) or [200 MB]
+      let size = '';
+      const sizeMatch = title.match(/[\[\(](\d+(?:\.\d+)?\s*[kmgt]?i?b)[\]\)]/i);
+      if (sizeMatch) {
+        size = sizeMatch[1];
+        title = title.replace(sizeMatch[0], '').trim();
+      }
+      
+      // 2. Season extraction: e.g. "Season 1" or "S01"
+      let season = '';
+      const seasonMatch = title.match(/(Season\s+\d+|S\d+)/i);
+      if (seasonMatch) {
+        season = seasonMatch[1];
+        title = title.replace(seasonMatch[0], '').trim();
+      }
+
+      // 3. Resolution extraction: e.g. "480p", "720p", "1080p", "2160p"
+      let resolution = '';
+      const resMatch = title.match(/(\d+p|4k|2160p)/i);
+      if (resMatch) {
+        resolution = resMatch[1];
+        title = title.replace(resMatch[0], '').trim();
+      }
+
+      // 4. Language extraction: e.g. (Hindi-English) or [Multi-Audio]
+      let lang = '';
+      const langMatch = title.match(/[\[\(]([a-zA-Z0-9\s-]+)[\]\)]/i);
+      if (langMatch) {
+        lang = langMatch[1];
+        title = title.replace(langMatch[0], '').trim();
+      }
+
+      // 5. Split remaining tags
+      const tags = title.split(/\s+/)
+        .map(s => s.trim())
+        .filter(s => s && s.toLowerCase() !== 'download' && s !== '-' && s !== '•');
+
+      return {
+        season: season,
+        lang: lang,
+        resolution: resolution,
+        size: size,
+        tags: tags,
+        fallbackTitle: originalTitle
+      };
+    }
+
+    function getResolutionClass(res) {
+      res = (res || '').toLowerCase();
+      if (res.includes('480')) return 'res-480p';
+      if (res.includes('720')) return 'res-720p';
+      if (res.includes('1080')) return 'res-1080p';
+      if (res.includes('2160') || res.includes('4k')) return 'res-4k';
+      return '';
+    }
+
+    function getQualityTheme(res, qualityTitle) {
+      const title = (qualityTitle || '').toLowerCase();
+      res = (res || '').toLowerCase();
+      
+      if (res.includes('480')) {
+        return {
+          class: 'theme-480p',
+          title: '480P',
+          subtitle: 'Standard Definition',
+          color: '#06b6d4',
+          bgGlow: 'rgba(6, 182, 212, 0.12)',
+          borderGlow: 'rgba(6, 182, 212, 0.35)',
+          btnBg: 'rgba(6, 182, 212, 0.15)',
+          btnBorder: 'rgba(6, 182, 212, 0.35)',
+          btnColor: '#22d3ee',
+          btnHoverBg: '#0891b2'
+        };
+      }
+      
+      if (res.includes('720')) {
+        if (title.includes('265') || title.includes('hevc') || title.includes('10bit')) {
+          return {
+            class: 'theme-720p-ready',
+            title: '720P',
+            subtitle: 'HD Ready',
+            color: '#10b981',
+            bgGlow: 'rgba(16, 185, 129, 0.12)',
+            borderGlow: 'rgba(16, 185, 129, 0.35)',
+            btnBg: 'rgba(16, 185, 129, 0.15)',
+            btnBorder: 'rgba(16, 185, 129, 0.35)',
+            btnColor: '#34d399',
+            btnHoverBg: '#059669'
+          };
+        } else {
+          return {
+            class: 'theme-720p-quality',
+            title: '720P',
+            subtitle: 'HD Quality',
+            color: '#fbbf24',
+            bgGlow: 'rgba(245, 158, 11, 0.12)',
+            borderGlow: 'rgba(245, 158, 11, 0.35)',
+            btnBg: 'rgba(245, 158, 11, 0.15)',
+            btnBorder: 'rgba(245, 158, 11, 0.35)',
+            btnColor: '#fbbf24',
+            btnHoverBg: '#d97706'
+          };
+        }
+      }
+      
+      if (res.includes('1080')) {
+        return {
+          class: 'theme-1080p',
+          title: '1080P',
+          subtitle: 'Full HD',
+          color: '#a855f7',
+          bgGlow: 'rgba(168, 85, 247, 0.12)',
+          borderGlow: 'rgba(168, 85, 247, 0.35)',
+          btnBg: 'rgba(168, 85, 247, 0.15)',
+          btnBorder: 'rgba(168, 85, 247, 0.35)',
+          btnColor: '#c084fc',
+          btnHoverBg: '#9333ea'
+        };
+      }
+      
+      if (res.includes('2160') || res.includes('4k')) {
+        return {
+          class: 'theme-4k',
+          title: '4K UHD',
+          subtitle: 'Ultra HD',
+          color: '#ec4899',
+          bgGlow: 'rgba(236, 72, 153, 0.12)',
+          borderGlow: 'rgba(236, 72, 153, 0.35)',
+          btnBg: 'rgba(236, 72, 153, 0.15)',
+          btnBorder: 'rgba(236, 72, 153, 0.35)',
+          btnColor: '#f472b6',
+          btnHoverBg: '#db2777'
+        };
+      }
+      
+      // Fallback
+      return {
+        class: 'theme-default',
+        title: res.toUpperCase() || 'VIDEO',
+        subtitle: 'High Quality',
+        color: '#94a3b8',
+        bgGlow: 'rgba(148, 163, 184, 0.12)',
+        borderGlow: 'rgba(148, 163, 184, 0.35)',
+        btnBg: 'rgba(148, 163, 184, 0.15)',
+        btnBorder: 'rgba(148, 163, 184, 0.35)',
+        btnColor: '#cbd5e1',
+        btnHoverBg: '#475569'
+      };
+    }
+
+    // Same-Page Options Detail view
+    function viewDetails(encodedItem) {
+      const item = JSON.parse(decodeURIComponent(encodedItem));
+      const resultsDiv = document.getElementById('search-results');
+      const detailPanel = document.getElementById('detail-panel');
+      const optionList = document.getElementById('option-list');
+      const metaRow = document.getElementById('detail-meta-row');
+      
+      // Hide search bar, category buttons, tabs bar, and search card grid
+      document.querySelector('.search-bar-row').style.display = 'none';
+      document.querySelector('.categories-row').style.display = 'none';
+      document.querySelector('.tabs-container').style.display = 'none';
+      resultsDiv.style.display = 'none';
+      
+      detailPanel.style.display = 'flex';
+      
+      // Load movie poster into page background fading in smoothly!
+      const bgElement = document.getElementById('details-page-bg');
+      const bgImg = document.getElementById('details-page-bg-img');
+      if (item.thumbnail) {
+        bgImg.src = `/api/thumbnail?url=${encodeURIComponent(item.thumbnail)}`;
+        bgElement.style.opacity = '0.35';
+      } else {
+        bgImg.src = '';
+        bgElement.style.opacity = '0';
+      }
+
+      document.getElementById('detail-title').innerText = item.title;
+      if (metaRow) metaRow.style.display = 'none';
+      
+      // Render loader inside details list
+      optionList.innerHTML = Array.from({length: 3}).map(() => `
+        <div class="option-group-card skeleton-card" style="min-height: 80px; margin-bottom:14px;">
+          <div style="display:flex; gap:12px; width:40%;">
+            <div class="skeleton-text" style="width: 60px; height: 24px; border-radius:12px;"></div>
+            <div class="skeleton-text" style="width: 80px; height: 24px; border-radius:12px;"></div>
+          </div>
+          <div style="display:flex; gap:12px; margin-left:auto;">
+            <div class="skeleton-text" style="width: 120px; height: 36px; border-radius:8px;"></div>
+          </div>
+        </div>
+      `).join('');
+
+      fetch(`/api/detail?url=${encodeURIComponent(item.url)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.error) {
+            optionList.innerHTML = `<div style="text-align: center; color: var(--crimson); padding: 40px;">Error: ${data.error}</div>`;
+            return;
+          }
+          if (data.options.length === 0) {
+            optionList.innerHTML = '<div style="text-align: center; color: var(--text-dim); padding: 40px;">No download options/qualities found on page.</div>';
+            return;
+          }
+          
+          // Extract global languages and tags across all options
+          const allLangs = new Set();
+          const allGlobalTags = new Set();
+          data.options.forEach(opt => {
+            const parsed = parseQualityTitle(opt.quality);
+            if (parsed.lang) allLangs.add(parsed.lang);
+            parsed.tags.forEach(tag => {
+              const t = tag.toLowerCase();
+              if (t.includes('sub') || t.includes('audio') || t === 'dual' || t.includes('multi')) {
+                allGlobalTags.add(tag);
+              }
+            });
+          });
+
+          // Hide global meta row — tags now live inside each season accordion
+          if (metaRow) metaRow.style.display = 'none';
+
+          // 1. Group options by exact "quality" text first
+          const qualityGroups = {};
+          data.options.forEach(opt => {
+            const key = opt.quality.trim();
+            if (!qualityGroups[key]) {
+              qualityGroups[key] = [];
+            }
+            qualityGroups[key].push(opt);
+          });
+
+          // 2. Now group these quality groups by their parsed "Season"
+          const seasonGroups = {};
+          Object.entries(qualityGroups).forEach(([quality, opts]) => {
+            const parsed = parseQualityTitle(quality);
+            // Default season label if none parsed (e.g. for movies)
+            const seasonName = parsed.season || "Complete Pack / Options";
+            if (!seasonGroups[seasonName]) {
+              seasonGroups[seasonName] = [];
+            }
+            seasonGroups[seasonName].push({
+              quality: quality,
+              parsed: parsed,
+              opts: opts
+            });
+          });
+
+          // 3. Sort season names nicely (e.g. Season 1 before Season 2)
+          const entries = Object.entries(seasonGroups);
+          entries.sort((a, b) => {
+            const numA = parseInt(a[0].match(/\d+/)) || 0;
+            const numB = parseInt(b[0].match(/\d+/)) || 0;
+            if (numA && numB) return numA - numB;
+            return a[0].localeCompare(b[0]);
+          });
+
+          // 4. Build accordion HTML structure (all kept COLLAPSED initially)
+          let accordionHtml = `<div class="accordion-list">`;
+          
+          entries.forEach(([seasonName, items], index) => {
+            const activeClass = ''; // Inactive/collapsed by default
+            const styleHeight = 'style="max-height: 0;"';
+
+            // Render options inside this Season group
+            const cardsInnerHtml = items.map(item => {
+              const parsed = item.parsed;
+              const theme = getQualityTheme(parsed.resolution, item.quality);
+              
+              // Build buttons row (side-by-side)
+              const buttonsHtml = item.opts.map(opt => {
+                let icon = '⚡';
+                let btnClass = 'primary-dl-btn';
+                const txt = opt.button_text.toLowerCase();
+                
+                if (txt.includes('zip') || txt.includes('batch') || txt.includes('pack')) {
+                  icon = '📦';
+                  btnClass = 'secondary-dl-btn';
+                } else if (txt.includes('telegram')) {
+                  icon = '✈️';
+                  btnClass = 'secondary-dl-btn';
+                }
+                
+                // For primary button, apply custom HSL glow and matching border inline
+                let inlineStyle = '';
+                let hoverAttributes = '';
+                if (btnClass === 'primary-dl-btn') {
+                  inlineStyle = `background: ${theme.btnBg}; border: 1px solid ${theme.btnBorder}; color: ${theme.btnColor}; box-shadow: 0 2px 10px ${theme.btnBg};`;
+                  hoverAttributes = `onmouseover="this.style.background='${theme.btnHoverBg}'; this.style.color='#ffffff'; this.style.box-shadow='0 4px 15px ${theme.btnBorder}'" onmouseout="this.style.background='${theme.btnBg}'; this.style.color='${theme.btnColor}'; this.style.box-shadow='0 2px 10px ${theme.btnBg}'"`;
+                }
+
+                return `
+                  <button class="option-dl-btn ${btnClass}" style="${inlineStyle}" ${hoverAttributes} onclick="startDownload('${encodeURIComponent(opt.url)}')">
+                    <span class="btn-icon">${icon}</span>
+                    ${opt.button_text}
+                  </button>
+                `;
+              }).join('');
+
+              // Monitor icon element
+              const monitorSvg = `
+                <svg class="monitor-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                  <line x1="8" y1="21" x2="16" y2="21"></line>
+                  <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+              `;
+
+              return `
+                <div class="option-group-card ${theme.class}">
+                  <div class="option-left-block">
+                    <div class="monitor-icon-wrapper">
+                      ${monitorSvg}
+                    </div>
+                    <div class="resolution-info">
+                      <div class="res-title">${theme.title}</div>
+                      <div class="res-subtitle">${theme.subtitle}</div>
+                    </div>
+                  </div>
+                  
+                  <div class="option-middle-block">
+                    <span class="pill-size">${parsed.size || 'N/A'}</span>
+                  </div>
+
+                  <div class="divider-line"></div>
+
+                  <div class="option-buttons-row">
+                    ${buttonsHtml}
+                  </div>
+                </div>
+              `;
+            }).join('');
+
+            const countText = items.length === 1 ? '1 Quality Option' : `${items.length} Quality Options`;
+
+            // Compute per-season language and tag pills
+            const seasonLangs = new Set();
+            const seasonTags = new Set();
+            items.forEach(item => {
+              if (item.parsed.lang) seasonLangs.add(item.parsed.lang);
+              item.parsed.tags.forEach(tag => {
+                const t = tag.toLowerCase();
+                if (t.includes('sub') || t.includes('audio') || t === 'dual' || t.includes('multi')) {
+                  seasonTags.add(tag);
+                }
+              });
+            });
+            let seasonPillsHtml = '';
+            seasonLangs.forEach(lang => {
+              seasonPillsHtml += `<span class="pill-badge pill-lang" style="font-size: 9.5px; padding: 3px 10px; margin-left: 6px;">🔊 ${lang}</span>`;
+            });
+            seasonTags.forEach(tag => {
+              seasonPillsHtml += `<span class="pill-badge pill-tag" style="font-size: 9.5px; padding: 3px 10px; margin-left: 4px;">🏷️ ${tag}</span>`;
+            });
+
+            accordionHtml += `
+              <div class="accordion-item ${activeClass}">
+                <div class="accordion-header" onclick="toggleAccordion(this)">
+                  <div class="accordion-header-left">
+                    <span class="accordion-icon">🍿</span>
+                    <span class="accordion-title">${seasonName}</span>
+                    <span class="accordion-count">${countText}</span>
+                    ${seasonPillsHtml}
+                  </div>
+                  <svg class="chevron-icon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="stroke-width:2.5;"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+                <div class="accordion-content" ${styleHeight}>
+                  <div class="accordion-content-inner">
+                    ${cardsInnerHtml}
+                  </div>
+                </div>
+              </div>
+            `;
+          });
+
+          accordionHtml += `</div>`;
+          optionList.innerHTML = accordionHtml;
+        })
+        .catch(e => {
+          optionList.innerHTML = `<div style="text-align: center; color: var(--crimson); padding: 40px;">Error: ${e.message}</div>`;
+        });
+    }
+
+    function toggleAccordion(header) {
+      const item = header.parentElement;
+      const content = item.querySelector('.accordion-content');
+      const isActive = item.classList.contains('active');
+      
+      // Close all other accordions smoothly
+      document.querySelectorAll('.accordion-item').forEach(otherItem => {
+        if (otherItem !== item) {
+          otherItem.classList.remove('active');
+          otherItem.querySelector('.accordion-content').style.maxHeight = null;
+        }
+      });
+
+      if (isActive) {
+        item.classList.remove('active');
+        content.style.maxHeight = null;
+      } else {
+        item.classList.add('active');
+        content.style.maxHeight = content.scrollHeight + 'px';
+        // Scroll the opened accordion into view smoothly after the expansion animation
+        setTimeout(() => {
+          item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 320);
+      }
+    }
+
+    function closeDetails() {
+      // Fade out background poster
+      const bgElement = document.getElementById('details-page-bg');
+      if (bgElement) bgElement.style.opacity = '0';
+      
+      // Restore search bar, categories, and tabs bar visibility
+      document.querySelector('.search-bar-row').style.display = 'block';
+      document.querySelector('.categories-row').style.display = 'flex';
+      document.querySelector('.tabs-container').style.display = 'flex';
+      
+      document.getElementById('detail-panel').style.display = 'none';
+      const q = document.getElementById('search-box').value.trim();
+      document.getElementById('search-results').style.display = q.length < 2 ? 'block' : 'grid';
+    }
+
+    function showDirectFromDetails() {
+      activeTab = 'direct';
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.view-panel').forEach(panel => panel.classList.remove('active'));
+      
+      document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
+      document.getElementById('direct-view').classList.add('active');
+      
+      // Hide the top header navigation tabs & direct input box
+      document.querySelector('.tabs-container').style.display = 'none';
+      document.querySelector('.direct-input-row').style.display = 'none';
+      
+      // Show the premium back button
+      document.getElementById('direct-back-row').style.display = 'block';
+    }
+
+    function goBackToMovie() {
+      // Switch back to search tab under-the-hood
+      activeTab = 'search';
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.view-panel').forEach(panel => panel.classList.remove('active'));
+      
+      document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
+      document.getElementById('search-view').classList.add('active');
+      
+      // Hide the back button, restore direct input row
+      document.getElementById('direct-back-row').style.display = 'none';
+      document.querySelector('.direct-input-row').style.display = 'flex';
+      
+      // Keep tabs container hidden since the user is in details view
+      document.querySelector('.tabs-container').style.display = 'none';
+    }
+
+    // Download API communication handlers
+    function startDownload(url) {
+      url = decodeURIComponent(url);
+      isResolvingNewDownload = true;
+
+      // Clear the downloads list UI immediately with beautiful skeleton placeholders so they don't see old downloads
+      const list = document.getElementById('downloads-list');
+      if (list) {
+        list.innerHTML = Array.from({length: 3}).map(() => `
+          <div class="download-card skeleton-card" style="min-height: 70px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; padding: 14px 20px;">
+            <div style="display: flex; align-items: center; gap: 12px; width: 60%;">
+              <div class="skeleton-text" style="width: 24px; height: 16px; border-radius: 4px;"></div>
+              <div class="skeleton-text" style="width: 80%; height: 16px; border-radius: 4px;"></div>
+            </div>
+            <div class="skeleton-text" style="width: 140px; height: 32px; border-radius: 20px;"></div>
+          </div>
+        `).join('');
+      }
+
+      if (isCloudMode) {
+        // Skip folder chooser in cloud mode
+        showDirectFromDetails();
+        fetch('/api/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: url, output_dir: 'cloud' })
+        });
+        return;
+      }
+
+      fetch('/api/choose-folder', { method: 'POST' })
+        .then(r => r.json())
+        .then(folderData => {
+          if (folderData.cancelled || !folderData.path) {
+            isResolvingNewDownload = false;
+            alert("Download cancelled: No directory selected.");
+            pollDownloads();
+            return;
+          }
+          
+          // Switch to Direct URL tab immediately to watch downloads progress
+          showDirectFromDetails();
+          
+          fetch('/api/download', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: url, output_dir: folderData.path })
+          });
+        });
+    }
+
+    function startDirectDownload() {
+      const url = document.getElementById('direct-url-box').value.trim();
+      if (!url) return;
+      document.getElementById('direct-url-box').value = '';
+      startDownload(encodeURIComponent(url));
+    }
+
+    // Polling Downloads status
+    function pollDownloads() {
+      if (activeTab !== 'direct') return; // only poll active view
+      
+      fetch('/api/downloads')
+        .then(r => r.json())
+        .then(data => {
+          const list = document.getElementById('downloads-list');
+          if (data.downloads.length === 0) {
+            if (isResolvingNewDownload) {
+              // Keep displaying the skeleton loader while the server is resolving
+              return;
+            }
+            list.innerHTML = '<div style="text-align: center; color: var(--text-dim); padding: 60px 0;">No active or completed downloads in queue.</div>';
+            return;
+          }
+
+          // Reset the resolving flag once cards are successfully fetched
+          isResolvingNewDownload = false;
+
+          let hasFailed = false;
+          list.innerHTML = data.downloads.map(dl => {
+            if (dl.state === 3) hasFailed = true; // State Failed
+            
+            let statusClass = '';
+            if (dl.state === 2) statusClass = 'done';
+            if (dl.state === 3) statusClass = 'failed';
+            if (dl.state === 1) statusClass = 'active';
+
+            const methodClass = (dl.method || '').toLowerCase();
+
+            // Right side content depends on state
+            let rightContent = '';
+            if (dl.resolved_url) {
+              // Completed with resolved URL — show download button
+              if (dl.size) {
+                rightContent = `
+                  <a href="${dl.resolved_url}" download="${dl.filename}" target="_blank" class="dl-download-btn-partitioned">
+                    <span class="dl-btn-left">☁ Download to Device</span>
+                    <span class="dl-btn-right">(${dl.size})</span>
+                  </a>
+                `;
+              } else {
+                rightContent = `<a href="${dl.resolved_url}" download="${dl.filename}" target="_blank" class="dl-download-btn">☁ Download to Device</a>`;
+              }
+            } else if (dl.state === 3) {
+              // Failed — show retry button
+              rightContent = `<button class="dl-retry-btn" onclick="retryDownload(${dl.index})">Retry</button>`;
+            } else if (dl.state === 1) {
+              // Actively downloading — show compact status
+              rightContent = `<span class="dl-status-compact" style="color: var(--blue)">${dl.status}</span>`;
+            } else {
+              // Queued or other — show status text
+              rightContent = `<span class="dl-status-compact" style="color: var(--text-sub)">${dl.status}</span>`;
+            }
+
+            // Only show progress bar if not yet completed
+            const progressBar = (dl.state !== 2) ? `<div class="dl-progress-mini" style="width: ${dl.progress * 100}%"></div>` : '';
+
+            return `
+              <div class="download-card ${statusClass}">
+                <div class="download-card-left">
+                  <span class="dl-index">#${dl.index}</span>
+                  <span class="dl-filename" title="${dl.filename}">${dl.filename}</span>
+                  ${dl.method ? `<span class="method-badge ${methodClass}">${dl.method}</span>` : ''}
+                </div>
+                <div class="download-card-right">
+                  ${rightContent}
+                </div>
+                ${progressBar}
+              </div>
+            `;
+          }).join('');
+
+          // Show retry all failures button if failures exist
+          document.getElementById('retry-failed-btn').style.display = hasFailed ? 'block' : 'none';
+        })
+        .catch(console.error);
+    }
+
+    function pollStatus() {
+      fetch('/api/status')
+        .then(r => r.json())
+        .then(data => {
+          isCloudMode = !!data.cloud_mode;
+          
+          document.getElementById('footer-status-text').innerHTML = 
+            `Downloads: Active ${data.active_threads} — Completed ${data.done_count}/${data.total_count} failed ${data.fail_count}`;
+          
+          const tgText = document.getElementById('tg-text');
+          const tgDot = document.getElementById('tg-dot');
+          tgText.innerText = data.telegram.text;
+          
+          tgDot.className = 'tg-dot';
+          if (data.telegram.color === 'green') tgDot.classList.add('ready');
+          else if (data.telegram.color === 'amber') tgDot.classList.add('warning');
+          else tgDot.classList.add('notready');
+        })
+        .catch(console.error);
+    }
+
+    function retryDownload(index) {
+      fetch('/api/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index: index })
+      });
+    }
+
+    function retryFailedAll() {
+      fetch('/api/retry-all', { method: 'POST' });
+    }

@@ -1094,6 +1094,108 @@ class APIRequestHandler(BaseHTTPRequestHandler):
             })
             return
 
+        # 1d. Serve static CSS, JS, images, etc. dynamically from the static directory with long-term caching
+        if parsed.path.startswith('/static/'):
+            local_path = parsed.path.lstrip('/')
+            if '..' not in local_path and os.path.exists(local_path) and os.path.isfile(local_path):
+                content_type = 'application/octet-stream'
+                if local_path.endswith('.css'):
+                    content_type = 'text/css'
+                elif local_path.endswith('.js'):
+                    content_type = 'application/javascript'
+                elif local_path.endswith('.png'):
+                    content_type = 'image/png'
+                elif local_path.endswith('.jpg') or local_path.endswith('.jpeg'):
+                    content_type = 'image/jpeg'
+                elif local_path.endswith('.webp'):
+                    content_type = 'image/webp'
+                
+                try:
+                    with open(local_path, 'rb') as f:
+                        content = f.read()
+                    self.send_response(200)
+                    self.send_header('Content-Type', content_type)
+                    self.send_header('Cache-Control', 'public, max-age=31536000')
+                    self.end_headers()
+                    self.wfile.write(content)
+                    return
+                except Exception:
+                    pass
+
+        # 1e. Serve compressed WebP thumbnails with caching
+        if parsed.path == '/api/thumbnail':
+            query = parse_qs(parsed.query)
+            image_url = query.get('url', [None])[0]
+            if not image_url:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b"Missing url parameter")
+                return
+
+            import hashlib
+            import io
+            import requests
+            from PIL import Image
+            
+            # Create a unique filename for the cached WebP image
+            url_hash = hashlib.md5(image_url.encode('utf-8')).hexdigest()
+            cache_dir = os.path.join('static', 'thumbnail_cache')
+            os.makedirs(cache_dir, exist_ok=True)
+            cache_path = os.path.join(cache_dir, f"{url_hash}.webp")
+
+            # Check if cached file exists
+            if os.path.exists(cache_path):
+                try:
+                    with open(cache_path, 'rb') as f:
+                        content = f.read()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'image/webp')
+                    self.send_header('Cache-Control', 'public, max-age=31536000')
+                    self.end_headers()
+                    self.wfile.write(content)
+                    return
+                except Exception:
+                    pass
+
+            # Fetch, resize, compress and cache the image
+            try:
+                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+                resp = requests.get(image_url, headers=headers, timeout=8)
+                if resp.status_code == 200:
+                    img = Image.open(io.BytesIO(resp.content))
+                    
+                    # Convert to RGB if needed
+                    if img.mode not in ('RGB', 'RGBA'):
+                        img = img.convert('RGB')
+                        
+                    # Resize to max 320px width to save bandwidth
+                    max_width = 320
+                    if img.width > max_width:
+                        ratio = max_width / float(img.width)
+                        new_height = int(float(img.height) * float(ratio))
+                        img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+                        
+                    # Save as WebP
+                    img.save(cache_path, 'WEBP', quality=80)
+                    
+                    with open(cache_path, 'rb') as f:
+                        content = f.read()
+                        
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'image/webp')
+                    self.send_header('Cache-Control', 'public, max-age=31536000')
+                    self.end_headers()
+                    self.wfile.write(content)
+                    return
+            except Exception as e:
+                print(f"[!] Error caching thumbnail {image_url}: {e}", flush=True)
+
+            # Fallback: Redirect to the original URL if compression/caching fails
+            self.send_response(302)
+            self.send_header('Location', image_url)
+            self.end_headers()
+            return
+
         # 2. API Status endpoint
         if parsed.path == '/api/status':
             tg_text, tg_color = DOWNLOAD_MGR._get_telegram_ready_status()

@@ -12,3 +12,4 @@ banner_optimized.jpg
 # Cloudflare Wrangler Pinger Project
 pinger-js/
 .wrangler/
+static/thumbnail_cache/
