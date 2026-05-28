@@ -1029,12 +1029,24 @@ class APIRequestHandler(BaseHTTPRequestHandler):
         # 1. Serve frontend index.html static file
         if parsed.path == '/' or parsed.path == '/index.html':
             try:
-                with open('index.html', 'rb') as f:
+                with open('index.html', 'r', encoding='utf-8') as f:
                     content = f.read()
+                
+                # Dynamically construct absolute URL for social media preview images
+                host = self.headers.get('X-Forwarded-Host') or self.headers.get('Host', 'localhost:5555')
+                proto = self.headers.get('X-Forwarded-Proto')
+                if proto:
+                    scheme = proto
+                else:
+                    scheme = 'http' if ('localhost' in host or '127.0.0.1' in host or '192.168.' in host) else 'https'
+                
+                absolute_logo_url = f"{scheme}://{host}/logo_optimized.png"
+                content = content.replace('content="/logo_optimized.png"', f'content="{absolute_logo_url}"')
+                
                 self.send_response(200)
-                self.send_header('Content-Type', 'text/html')
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
                 self.end_headers()
-                self.wfile.write(content)
+                self.wfile.write(content.encode('utf-8'))
             except Exception as e:
                 self.send_response(500)
                 self.end_headers()
