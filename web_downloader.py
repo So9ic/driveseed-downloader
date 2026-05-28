@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DriveSeed Web Downloader Backend Server.
+MoviesCrackd Web Downloader Backend Server.
 Provides a premium, responsive local API server for the index.html frontend.
 """
 
@@ -1083,6 +1083,17 @@ class APIRequestHandler(BaseHTTPRequestHandler):
                 self.end_headers()
             return
 
+        # 1c. Uptime compatibility ping endpoint for Cloudflare Monitor worker
+        if parsed.path == '/api/ping' or parsed.path == '/ping':
+            print("[*] Received compatibility uptime ping from Cloudflare Monitor worker", flush=True)
+            self.send_json({
+                "status": "ok",
+                "uptime": "online",
+                "service": "moviescrackd-backend",
+                "timestamp": time.time()
+            })
+            return
+
         # 2. API Status endpoint
         if parsed.path == '/api/status':
             tg_text, tg_color = DOWNLOAD_MGR._get_telegram_ready_status()
@@ -1306,14 +1317,14 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
 
 def main():
     print(r"""
-    ___       _            ____                _ 
-   /   \ _ __(_)   _____  / ___|  ___  ___  __| |
-  / /\ /| '__| \ \ / / _ \ \___ \ / _ \/ _ \/ _` |
- / /_// | |  | |\ V /  __/  ___) |  __/  __/ (_| |
-/___,'  |_|  |_| \_/ \___| |____/ \___|\___|\__,_|
-                                                 
+    __  ___            _             __            __      __
+   /  |/  /___ _   __(_)____  _____/ /_________ _/ /_____/ /____
+  / /|_/ / __ \ | / / / ___/ / ___/ __/ ___/ __ `/ //_/ _  / ___/
+ / /  / / /_/ / |/ / (__  ) / /__/ /_/ /  / /_/ / ,< / /_/ / /
+/_/  /_/\____/|___/_/____/  \___/\__/_/   \__,_/_/|_|\__,_/_/
+                                                             
     """, flush=True)
-    print("=== DriveSeed Standalone Web Downloader Server ===", flush=True)
+    print("=== MoviesCrackd Standalone Web Downloader Server ===", flush=True)
 
     port = int(os.environ.get("PORT", 5555))
     server_address = ('', port)
