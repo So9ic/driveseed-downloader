@@ -1328,19 +1328,25 @@
 
       /* Exactly two movie cards per row on mobile! */
       .movie-grid {
-        grid-template-columns: repeat(2, 1fr) !important;
-        gap: 8px !important;
+        grid-template-columns: repeat(2, minmax(100px, 140px)) !important;
+        gap: 12px !important;
+        justify-content: center !important;
+        width: 100% !important;
       }
 
       .movie-card {
-        padding: 5px;
-        border-radius: 10px;
-        gap: 6px;
+        width: 100% !important;
+        max-width: 140px !important;
+        padding: 6px !important;
+        border-radius: 10px !important;
+        gap: 6px !important;
       }
 
       .poster-wrap {
-        border-radius: 8px;
+        border-radius: 8px !important;
         aspect-ratio: 2 / 3 !important;
+        width: 100% !important;
+        position: relative !important;
       }
 
       .movie-title {
