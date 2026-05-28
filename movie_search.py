@@ -93,9 +93,10 @@ def fetch_with_fallback(url, max_proxies=50):
         
         import random
         random.shuffle(proxies)
-        candidate_proxies = proxies[:20]
+        # Test only 5 candidate proxies to keep CPU/thread usage extremely minimal on cloud containers
+        candidate_proxies = proxies[:5]
         
-        with ThreadPoolExecutor(max_workers=25) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:
             futures = {executor.submit(test_proxy, url, p): p for p in candidate_proxies}
             for future in as_completed(futures):
                 p, text = future.result()

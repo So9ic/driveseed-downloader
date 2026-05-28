@@ -1019,15 +1019,54 @@ def get_cached_trending():
     if TRENDING_CACHE["data"] is not None and now - TRENDING_CACHE["timestamp"] < 1800:
         return TRENDING_CACHE["data"]
     
-    try:
-        from movie_search import fetch_trending_movies
-        data = fetch_trending_movies()
-        TRENDING_CACHE["data"] = data
-        TRENDING_CACHE["timestamp"] = now
-        return data
-    except Exception as e:
-        print(f"[-] Error fetching trending movies: {e}")
-        return TRENDING_CACHE["data"] or []
+    # If cache is expired or empty, trigger background update thread
+    def update_trending_in_background():
+        try:
+            from movie_search import fetch_trending_movies
+            # Fetch sequentially to keep CPU/thread usage extremely low on cloud containers
+            data = fetch_trending_movies()
+            if data:
+                TRENDING_CACHE["data"] = data
+                TRENDING_CACHE["timestamp"] = time.time()
+                print("[+] Successfully pre-cached trending movies in background thread", flush=True)
+        except Exception as e:
+            print(f"[-] Background trending update failed: {e}", flush=True)
+
+    # Launch background thread to prevent HTTP gateway timeout or high CPU spikes
+    threading.Thread(target=update_trending_in_background, daemon=True).start()
+    
+    # If we have old data, return it immediately. 
+    if TRENDING_CACHE["data"]:
+        return TRENDING_CACHE["data"]
+        
+    # Return placeholder items so UI renders a stunning carousel instantly
+    return [
+        {
+            "title": "Deadpool & Wolverine (2024) [Multi-Audio] [1080p]",
+            "url": "https://moviesmod.money",
+            "thumbnail": "https://image.tmdb.org/t/p/w500/8cd70bC3gwYZ2nseXPRw6786IEy.jpg",
+            "category": "HOLLYWOOD"
+        },
+        {
+            "title": "The Boys - Season 4 [Dual-Audio] [720p]",
+            "url": "https://moviesmod.money",
+            "thumbnail": "https://image.tmdb.org/t/p/w500/29n7mq4Hn76IR65U5gB49vH7GQR.jpg",
+            "category": "HOLLYWOOD"
+        },
+        {
+            "title": "Kalki 2898 AD (2024) [Hindi-DD5.1] [1080p]",
+            "url": "https://moviesleech.rodeo",
+            "thumbnail": "https://image.tmdb.org/t/p/w500/czhy5HnS691Vj6SjFfC7lS4N93f.jpg",
+            "category": "BOLLYWOOD"
+        },
+        {
+            "title": "Demon Slayer: Hashira Training Arc [Dual-Audio] [1080p]",
+            "url": "https://animeflix.dad",
+            "thumbnail": "https://image.tmdb.org/t/p/w500/xOMo8NETf7Phlx636EvVNs8fgZ0.jpg",
+            "category": "ANIMEFLIX"
+        }
+    ]
+
 
 
 # ── Threaded HTTP Request Handler & API Router ───────────────────────────
