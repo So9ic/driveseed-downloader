@@ -1724,6 +1724,7 @@
     let activeTab = 'search';
     let currentCategory = 'All';
     let isCloudMode = false;
+    let isResolvingNewDownload = false;
     let activeSearchController = null;
     let downloadsInterval = null;
     let allFetchedResults = [];
@@ -2491,6 +2492,7 @@
     // Download API communication handlers
     function startDownload(url) {
       url = decodeURIComponent(url);
+      isResolvingNewDownload = true;
 
       // Clear the downloads list UI immediately with beautiful skeleton placeholders so they don't see old downloads
       const list = document.getElementById('downloads-list');
@@ -2521,7 +2523,9 @@
         .then(r => r.json())
         .then(folderData => {
           if (folderData.cancelled || !folderData.path) {
+            isResolvingNewDownload = false;
             alert("Download cancelled: No directory selected.");
+            pollDownloads();
             return;
           }
           
@@ -2552,9 +2556,16 @@
         .then(data => {
           const list = document.getElementById('downloads-list');
           if (data.downloads.length === 0) {
+            if (isResolvingNewDownload) {
+              // Keep displaying the skeleton loader while the server is resolving
+              return;
+            }
             list.innerHTML = '<div style="text-align: center; color: var(--text-dim); padding: 60px 0;">No active or completed downloads in queue.</div>';
             return;
           }
+
+          // Reset the resolving flag once cards are successfully fetched
+          isResolvingNewDownload = false;
 
           let hasFailed = false;
           list.innerHTML = data.downloads.map(dl => {
