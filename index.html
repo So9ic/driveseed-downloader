@@ -1341,10 +1341,12 @@
       }
 
       .poster-wrap {
-        border-radius: 8px !important;
-        aspect-ratio: 2 / 3 !important;
         width: 100% !important;
+        height: 0 !important;
+        padding-bottom: 150% !important; /* Mathematically perfect 2:3 Aspect Ratio */
+        border-radius: 8px !important;
         position: relative !important;
+        overflow: hidden !important;
       }
 
       .movie-title {
