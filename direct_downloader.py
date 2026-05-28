@@ -217,8 +217,25 @@ def get_driveseed_download_url(driveseed_url: str, retries: int = 2) -> tuple[st
                 resp = SESSION.get(file_url, timeout=30)
                 resp.raise_for_status()
                 html = resp.text
-
             filename, _ = _extract_filename_and_size(html)
+
+            # If the page contains a "/zfile/" link (Resume Cloud), fetch that page too
+            zfile_match = re.search(r'href=["\']([^"\']*/zfile/[^"\']+)["\']', html)
+            if zfile_match:
+                zfile_path = zfile_match.group(1)
+                if zfile_path.startswith('/'):
+                    p = urlparse(driveseed_url)
+                    zfile_url = f"{p.scheme}://{p.netloc}{zfile_path}"
+                else:
+                    zfile_url = zfile_path
+                
+                print(f"    [+] Found Resume Cloud link, fetching zfile page: {zfile_url}")
+                try:
+                    zfile_resp = SESSION.get(zfile_url, timeout=30)
+                    zfile_resp.raise_for_status()
+                    html += "\n" + zfile_resp.text
+                except Exception as ze:
+                    print(f"    [-] Failed to fetch zfile page: {ze}")
 
             # Collect ALL download links (ordered by priority)
             methods = {
@@ -255,7 +272,7 @@ def get_driveseed_download_url(driveseed_url: str, retries: int = 2) -> tuple[st
                 elif 'instant download' in clean_label:
                     methods['V1'].append(href)
                     seen_urls.add(href)
-                elif 'cloud download' in clean_label:
+                elif 'cloud' in clean_label or 'resume' in clean_label:
                     methods['CLOUD'].append(href)
                     seen_urls.add(href)
                 elif 'telegram' in clean_label:
@@ -323,7 +340,7 @@ def get_driveseed_download_url(driveseed_url: str, retries: int = 2) -> tuple[st
 
             # Try each candidate in priority order
             for method, dl_url in download_candidates:
-                if method == 'CLOUD' and '.r2.dev/' in dl_url:
+                if method == 'CLOUD' and ('.r2.dev/' in dl_url or 'workers.dev/' in dl_url):
                     return dl_url, filename, method
                 if method == 'TELEGRAM' and 'tgseed.link' in dl_url:
                     return dl_url, filename, method
