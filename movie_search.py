@@ -7,12 +7,15 @@ and extracts download qualities and links from movie/series pages.
 
 import re
 import requests
+import time
 from urllib.parse import urljoin, quote_plus
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Global to cache the successful proxy and domains
 WORKING_PROXY = None
 RESOLVED_DOMAINS = {}
+FAILED_DOMAINS = {}  # domain -> timestamp of failure
+
 
 
 def test_proxy(page_url, p):
@@ -29,7 +32,7 @@ def test_proxy(page_url, p):
                 ),
             },
             proxies=p_dict,
-            timeout=(2.05, 4)
+            timeout=(1.5, 2.5)
         )
         if resp.status_code == 200 and "Just a moment..." not in resp.text:
             return p, resp.text
@@ -85,12 +88,12 @@ def fetch_with_fallback(url, max_proxies=50):
     print(f"    [!] Direct fetch blocked. Launching parallel proxy resolver for: {url}")
     try:
         proxy_url = 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&country=all&ssl=all&anonymity=all'
-        r = requests.get(proxy_url, timeout=(3.05, 4))
+        r = requests.get(proxy_url, timeout=(1.5, 2.5))
         proxies = [p.strip() for p in r.text.strip().split('\n') if p.strip()]
         
         import random
         random.shuffle(proxies)
-        candidate_proxies = proxies[:max_proxies]
+        candidate_proxies = proxies[:20]
         
         with ThreadPoolExecutor(max_workers=25) as executor:
             futures = {executor.submit(test_proxy, url, p): p for p in candidate_proxies}
@@ -165,6 +168,15 @@ def search_movies(query, categories=None, on_result_callback=None):
         if not base_url:
             return []
             
+        # Self-healing domain blacklist check
+        current_time = time.time()
+        if base_url in FAILED_DOMAINS:
+            if current_time - FAILED_DOMAINS[base_url] < 180:  # 3-minute blacklist
+                print(f"[*] Skipping category {cat.upper()} (recently failed/offline): {base_url}")
+                return []
+            else:
+                FAILED_DOMAINS.pop(base_url, None)
+            
         search_url = f"{base_url}/search/{search_query}"
         print(f"[*] Searching {cat.upper()} at: {search_url}")
         
@@ -200,6 +212,7 @@ def search_movies(query, categories=None, on_result_callback=None):
                         on_result_callback(item)
         except Exception as e:
             print(f"[-] Search failed for category {cat}: {e}")
+            FAILED_DOMAINS[base_url] = current_time
             
         return cat_results
 
