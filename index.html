@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>DriveSeed Downloader</title>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -36,6 +36,12 @@
       padding: 0;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+    }
+
+    html, body {
+      max-width: 100%;
+      overflow-x: hidden;
+      width: 100%;
     }
 
     body {
@@ -1276,9 +1282,17 @@
 
     /* ── MOBILE RESPONSIVENESS MEDIA QUERY ── */
     @media (max-width: 600px) {
+      html, body {
+        max-width: 100%;
+        overflow-x: hidden !important;
+        width: 100%;
+      }
+
       .app-container {
         padding: 16px 12px;
         gap: 16px;
+        max-width: 100%;
+        overflow-x: hidden !important;
       }
 
       header {
@@ -1307,7 +1321,7 @@
 
       .search-input {
         padding: 12px 14px 12px 42px;
-        font-size: 13px;
+        font-size: 16px !important; /* Force 16px to prevent iOS Safari auto-zoom on focus */
       }
 
       .categories-row {
@@ -1328,14 +1342,16 @@
 
       /* Exactly two movie cards per row on mobile! */
       .movie-grid {
-        grid-template-columns: repeat(2, minmax(142px, 140px)) !important;
-        gap: 30px 50px !important;
-        width: 93% !important;
-        margin: auto;
+        grid-template-columns: repeat(2, minmax(120px, 170px)) !important;
+        gap: 16px 12px !important;
+        width: 100% !important;
+        margin: 0 auto !important;
+        justify-content: center !important;
+        box-sizing: border-box !important;
       }
 
       .movie-card {
-        width: 120% !important;
+        width: 100% !important;
         max-width: 170px !important;
         padding: 6px !important;
         border-radius: 10px !important;
@@ -1469,6 +1485,10 @@
       .direct-input-row {
         flex-direction: column;
         gap: 10px;
+      }
+
+      .direct-input {
+        font-size: 16px !important; /* Force 16px to prevent iOS Safari auto-zoom on focus */
       }
 
       .go-btn {
@@ -1654,6 +1674,23 @@
           if (footer) footer.style.display = 'none';
         }
       }, 1500);
+
+      // Forcefully prevent pinch-to-zoom gestures on mobile devices
+      document.addEventListener('touchstart', (event) => {
+        if (event.touches.length > 1) {
+          event.preventDefault();
+        }
+      }, { passive: false });
+
+      // Forcefully prevent double-tap-to-zoom gestures on mobile devices
+      let lastTouchEnd = 0;
+      document.addEventListener('touchend', (event) => {
+        const now = (new Date()).getTime();
+        if (now - lastTouchEnd <= 300) {
+          event.preventDefault();
+        }
+        lastTouchEnd = now;
+      }, { passive: false });
     });
 
     function switchTab(tab) {
