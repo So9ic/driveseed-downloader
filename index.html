@@ -724,44 +724,46 @@
     .download-card {
       background: var(--card-bg);
       border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 18px;
+      border-radius: 14px;
+      padding: 14px 18px;
       display: flex;
-      flex-direction: column;
-      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
       transition: all 0.3s;
       backdrop-filter: blur(12px);
+      position: relative;
+      overflow: hidden;
     }
 
     .download-card.done {
-      border-color: rgba(16, 185, 129, 0.3);
-      background: rgba(16, 185, 129, 0.03);
+      border-color: rgba(16, 185, 129, 0.25);
+      background: linear-gradient(90deg, rgba(18, 18, 28, 0.6) 50%, rgba(16, 185, 129, 0.06) 100%);
     }
 
     .download-card.failed {
-      border-color: rgba(239, 68, 68, 0.3);
-      background: rgba(239, 68, 68, 0.03);
+      border-color: rgba(239, 68, 68, 0.25);
+      background: linear-gradient(90deg, rgba(18, 18, 28, 0.6) 50%, rgba(239, 68, 68, 0.06) 100%);
     }
 
-    .download-card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 16px;
+    .download-card.active {
+      border-color: rgba(99, 102, 241, 0.25);
+      background: linear-gradient(90deg, rgba(18, 18, 28, 0.6) 50%, rgba(99, 102, 241, 0.06) 100%);
     }
 
-    .download-info {
+    .download-card-left {
       display: flex;
       align-items: center;
       gap: 10px;
-      flex-grow: 1;
       min-width: 0;
+      flex: 1;
     }
 
     .dl-index {
       font-weight: 700;
       color: var(--accent);
       font-size: 13px;
+      flex-shrink: 0;
     }
 
     .dl-filename {
@@ -781,71 +783,85 @@
       border-radius: 4px;
       color: #000000;
       text-transform: uppercase;
+      flex-shrink: 0;
     }
     .method-badge.v2 { background: var(--emerald); }
     .method-badge.v1 { background: var(--amber); }
     .method-badge.cloud { background: #d946ef; }
     .method-badge.telegram { background: #3b82f6; color: #fff; }
 
-    .dl-status {
+    .download-card-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .dl-status-compact {
       font-size: 12px;
       font-weight: 600;
       white-space: nowrap;
     }
 
-    /* Progress Widget */
-    .progress-bar-wrap {
-      width: 100%;
-      height: 6px;
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 3px;
-      overflow: hidden;
+    .dl-download-btn {
+      background: linear-gradient(135deg, var(--emerald), #059669);
+      color: #ffffff;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 10px;
+      font-family: var(--font-inter);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.25s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+      box-shadow: 0 2px 12px rgba(16, 185, 129, 0.25);
+      white-space: nowrap;
     }
 
-    .progress-bar-fill {
-      height: 100%;
-      width: 0%;
+    .dl-download-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 18px rgba(16, 185, 129, 0.4);
+    }
+
+    .dl-retry-btn {
+      background: rgba(239, 68, 68, 0.12);
+      color: var(--crimson);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      padding: 8px 16px;
+      border-radius: 10px;
+      font-family: var(--font-inter);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.25s;
+      white-space: nowrap;
+    }
+
+    .dl-retry-btn:hover {
+      background: rgba(239, 68, 68, 0.2);
+    }
+
+    /* Compact progress bar (only shown when actively downloading) */
+    .dl-progress-mini {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 3px;
       background: var(--accent);
-      border-radius: 3px;
+      border-radius: 0 0 14px 14px;
       transition: width 0.3s ease;
     }
 
-    .download-card.done .progress-bar-fill {
+    .download-card.done .dl-progress-mini {
       background: var(--emerald);
     }
 
-    .download-card.failed .progress-bar-fill {
+    .download-card.failed .dl-progress-mini {
       background: var(--crimson);
-    }
-
-    .download-details {
-      display: flex;
-      justify-content: space-between;
-      font-size: 11px;
-      color: var(--text-sub);
-    }
-
-    .card-actions {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .card-action-btn {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border);
-      color: var(--text);
-      font-size: 11px;
-      font-weight: 600;
-      padding: 6px 12px;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all 0.25s;
-    }
-
-    .card-action-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: rgba(255, 255, 255, 0.2);
     }
 
     /* Status Bar Footer */
@@ -1419,10 +1435,30 @@
         padding: 12px;
       }
 
-      .download-card-header {
+      .download-card {
         flex-direction: column;
-        align-items: flex-start;
-        gap: 8px;
+        align-items: stretch;
+        gap: 10px;
+        padding: 14px;
+      }
+
+      .download-card-left {
+        width: 100%;
+      }
+
+      .download-card-right {
+        width: 100%;
+        justify-content: flex-end;
+      }
+
+      .dl-download-btn {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .dl-retry-btn {
+        width: 100%;
+        text-align: center;
       }
 
       .download-info {
@@ -2339,52 +2375,43 @@
           list.innerHTML = data.downloads.map(dl => {
             if (dl.state === 3) hasFailed = true; // State Failed
             
-            let statusColor = 'var(--text-sub)';
             let statusClass = '';
-            if (dl.state === 2) { statusColor = 'var(--emerald)'; statusClass = 'done'; }
-            if (dl.state === 3) { statusColor = 'var(--crimson)'; statusClass = 'failed'; }
-            if (dl.state === 1) statusColor = 'var(--blue)';
+            if (dl.state === 2) statusClass = 'done';
+            if (dl.state === 3) statusClass = 'failed';
+            if (dl.state === 1) statusClass = 'active';
 
             const methodClass = (dl.method || '').toLowerCase();
 
-            // Direct download button for cloud/browser mode
-            let directDownloadBtn = '';
+            // Right side content depends on state
+            let rightContent = '';
             if (dl.resolved_url) {
-              directDownloadBtn = `
-                <div class="card-actions" style="margin-top: 10px;">
-                  <a href="${dl.resolved_url}" download="${dl.filename}" target="_blank" class="card-action-btn" style="background: var(--emerald); color: #ffffff; border: none; padding: 6px 14px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);">
-                    📥 Download to Device
-                  </a>
-                </div>
-              `;
+              // Completed with resolved URL — show download button
+              rightContent = `<a href="${dl.resolved_url}" download="${dl.filename}" target="_blank" class="dl-download-btn">☁ Download to Device</a>`;
+            } else if (dl.state === 3) {
+              // Failed — show retry button
+              rightContent = `<button class="dl-retry-btn" onclick="retryDownload(${dl.index})">Retry</button>`;
+            } else if (dl.state === 1) {
+              // Actively downloading — show compact status
+              rightContent = `<span class="dl-status-compact" style="color: var(--blue)">${dl.status}</span>`;
+            } else {
+              // Queued or other — show status text
+              rightContent = `<span class="dl-status-compact" style="color: var(--text-sub)">${dl.status}</span>`;
             }
+
+            // Only show progress bar if not yet completed
+            const progressBar = (dl.state !== 2) ? `<div class="dl-progress-mini" style="width: ${dl.progress * 100}%"></div>` : '';
 
             return `
               <div class="download-card ${statusClass}">
-                <div class="download-card-header">
-                  <div class="download-info">
-                    <span class="dl-index">#${dl.index}</span>
-                    <span class="dl-filename" title="${dl.filename}">${dl.filename}</span>
-                    ${dl.method ? `<span class="method-badge ${methodClass}">${dl.method}</span>` : ''}
-                  </div>
-                  <span class="dl-status" style="color: ${statusColor}">${dl.status}</span>
-                  ${dl.state === 3 ? `
-                    <div class="card-actions">
-                      <button class="card-action-btn" onclick="retryDownload(${dl.index})">Retry</button>
-                    </div>
-                  ` : ''}
+                <div class="download-card-left">
+                  <span class="dl-index">#${dl.index}</span>
+                  <span class="dl-filename" title="${dl.filename}">${dl.filename}</span>
+                  ${dl.method ? `<span class="method-badge ${methodClass}">${dl.method}</span>` : ''}
                 </div>
-                
-                <div class="progress-bar-wrap">
-                  <div class="progress-bar-fill" style="width: ${dl.progress * 100}%"></div>
+                <div class="download-card-right">
+                  ${rightContent}
                 </div>
-                
-                <div class="download-details">
-                  <span>${dl.detail || ''}</span>
-                  <span>${Math.round(dl.progress * 100)}%</span>
-                </div>
-                
-                ${directDownloadBtn}
+                ${progressBar}
               </div>
             `;
           }).join('');
