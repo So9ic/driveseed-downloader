@@ -1009,6 +1009,26 @@ class DownloaderBackend:
 # Global Download Manager reference
 DOWNLOAD_MGR = DownloaderBackend()
 
+TRENDING_CACHE = {
+    "data": None,
+    "timestamp": 0
+}
+
+def get_cached_trending():
+    now = time.time()
+    if TRENDING_CACHE["data"] is not None and now - TRENDING_CACHE["timestamp"] < 1800:
+        return TRENDING_CACHE["data"]
+    
+    try:
+        from movie_search import fetch_trending_movies
+        data = fetch_trending_movies()
+        TRENDING_CACHE["data"] = data
+        TRENDING_CACHE["timestamp"] = now
+        return data
+    except Exception as e:
+        print(f"[-] Error fetching trending movies: {e}")
+        return TRENDING_CACHE["data"] or []
+
 
 # ── Threaded HTTP Request Handler & API Router ───────────────────────────
 
@@ -1084,6 +1104,13 @@ class APIRequestHandler(BaseHTTPRequestHandler):
         if parsed.path == '/api/downloads':
             self.send_json({
                 "downloads": [card.to_json() for card in DOWNLOAD_MGR.cards]
+            })
+            return
+
+        # 3b. API Trending movies list endpoint
+        if parsed.path == '/api/trending':
+            self.send_json({
+                "movies": get_cached_trending()
             })
             return
 

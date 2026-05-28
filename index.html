@@ -1618,6 +1618,141 @@
         width: 100%;
       }
     }
+
+    /* ── Showcase Marquee Premium Styles ── */
+    .trending-showcase-container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding: 15px 0 40px 0;
+      width: 100%;
+      overflow: hidden;
+      animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .marquee-row-wrapper {
+      overflow: hidden;
+      width: 100vw;
+      position: relative;
+      left: 50%;
+      right: 50%;
+      margin-left: -50vw;
+      margin-right: -50vw;
+      padding: 10px 0;
+      mask-image: linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%);
+      -webkit-mask-image: linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%);
+    }
+
+    .marquee-track {
+      display: flex;
+      gap: 24px;
+      width: max-content;
+      will-change: transform;
+      cursor: grab;
+      user-select: none;
+    }
+
+    .marquee-track:active {
+      cursor: grabbing;
+    }
+
+    .marquee-group {
+      display: flex;
+      gap: 24px;
+      flex-shrink: 0;
+    }
+
+    .marquee-track.left {
+      animation: marquee-left 45s linear infinite;
+    }
+
+    .marquee-track.right {
+      animation: marquee-right 45s linear infinite;
+    }
+
+    /* Pause sliding when hovering row */
+    .marquee-row-wrapper:hover .marquee-track {
+      animation-play-state: paused;
+    }
+
+    /* Toggle pause class for mobile/click */
+    .marquee-track.paused {
+      animation-play-state: paused !important;
+    }
+
+    @keyframes marquee-left {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    @keyframes marquee-right {
+      0% { transform: translateX(-50%); }
+      100% { transform: translateX(0); }
+    }
+
+    /* Showcase static overlay card */
+    .movie-card.static-overlay {
+      width: 180px;
+      height: 256px;
+      padding: 0;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      border-radius: 20px;
+      flex-shrink: 0;
+      transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), 
+                  transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), 
+                  width 0.5s cubic-bezier(0.16, 1, 0.3, 1), 
+                  margin-right 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+                  border-color 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+      margin-right: 0;
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+    }
+    
+    .movie-card.static-overlay .poster-wrap {
+      width: 100%;
+      height: 100%;
+      border-radius: 20px;
+    }
+    
+    .movie-card.static-overlay .poster-hover-overlay {
+      opacity: 1;
+      transform: scale(1);
+      pointer-events: auto;
+      background: linear-gradient(to top, rgba(10, 10, 15, 0.98) 0%, rgba(10, 10, 15, 0.5) 60%, rgba(10, 10, 15, 0) 100%);
+      border-radius: 20px;
+      padding: 16px;
+    }
+
+    .movie-card.static-overlay .hover-overlay-content {
+      transform: translateY(0);
+    }
+    
+    .movie-card.static-overlay .hover-overlay-main-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #ffffff;
+      line-height: 1.35;
+    }
+
+    /* Category badge inside poster wrap */
+    .movie-card.static-overlay .cat-badge {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      z-index: 5;
+    }
+
+    /* Collapse animation style for filtering cards out */
+    .movie-card.static-overlay.hidden-card {
+      opacity: 0;
+      transform: scale(0.5);
+      width: 0 !important;
+      margin-right: -24px !important;
+      border-color: transparent !important;
+      pointer-events: none !important;
+    }
   </style>
 </head>
 <body>
@@ -1729,6 +1864,7 @@
     let downloadsInterval = null;
     let allFetchedResults = [];
     let lastSearchQuery = '';
+    let trendingMoviesList = [];
 
     // Startup Init
     window.addEventListener('DOMContentLoaded', () => {
@@ -1764,6 +1900,9 @@
         }
         lastTouchEnd = now;
       }, { passive: false });
+
+      // Fetch and render trending showcase marquee on home page
+      fetchAndRenderTrendingShowcase();
     });
 
     function goHome() {
@@ -1800,6 +1939,128 @@
       }
     }
 
+    // ── Showcase Marquee API & Rendering ──
+    function fetchAndRenderTrendingShowcase() {
+      fetch('/api/trending')
+        .then(r => r.json())
+        .then(data => {
+          if (data.movies && data.movies.length > 0) {
+            trendingMoviesList = data.movies;
+            renderTrendingShowcase();
+          }
+        })
+        .catch(err => console.error("Failed to fetch trending movies:", err));
+    }
+
+    function renderTrendingShowcase() {
+      const q = document.getElementById('search-box').value.trim();
+      if (q.length >= 2) return; // Ignore if user is actively searching
+
+      const resultsDiv = document.getElementById('search-results');
+      if (!resultsDiv) return;
+
+      resultsDiv.style.display = 'block';
+
+      if (!trendingMoviesList || trendingMoviesList.length === 0) {
+        // Render 3 skeleton marquee rows while fetching
+        let rowsHtml = '';
+        for (let r = 0; r < 3; r++) {
+          const direction = (r % 2 === 0) ? 'left' : 'right';
+          const skeletonsHtml = Array.from({length: 8}).map(() => `
+            <div class="movie-card static-overlay skeleton-card" style="border: none;">
+              <div class="poster-wrap">
+                <div class="skeleton-img"></div>
+              </div>
+            </div>
+          `).join('');
+          
+          rowsHtml += `
+            <div class="marquee-row-wrapper">
+              <div class="marquee-track ${direction}">
+                <div class="marquee-group">${skeletonsHtml}</div>
+                <div class="marquee-group">${skeletonsHtml}</div>
+              </div>
+            </div>
+          `;
+        }
+        resultsDiv.innerHTML = `
+          <div class="trending-showcase-container">
+            <h2 style="font-family: var(--font-outfit); font-size: 18px; font-weight: 700; margin-bottom: 20px; color: var(--text);">⚡ Trending & Latest Releases</h2>
+            ${rowsHtml}
+          </div>
+        `;
+        return;
+      }
+
+      // Split into 3 rows
+      const rowCount = 3;
+      const moviesPerRow = Math.ceil(trendingMoviesList.length / rowCount);
+      let rowsHtml = '';
+
+      for (let r = 0; r < rowCount; r++) {
+        const start = r * moviesPerRow;
+        const rowMovies = trendingMoviesList.slice(start, start + moviesPerRow);
+        if (rowMovies.length === 0) continue;
+
+        const direction = (r % 2 === 0) ? 'left' : 'right';
+        
+        const cardsHtml = rowMovies.map(movie => {
+          const catClass = movie.category.toLowerCase() === 'animeflix' ? 'anime' : movie.category.toLowerCase();
+          const categoryBadge = `<span class="cat-badge ${catClass}">${movie.category === 'ANIMEFLIX' ? 'ANIME' : movie.category}</span>`;
+          
+          return `
+            <div class="movie-card static-overlay" data-category="${movie.category}" onclick="event.stopPropagation(); viewDetails('${encodeURIComponent(JSON.stringify(movie))}')">
+              <div class="poster-wrap">
+                ${movie.thumbnail ? `<img src="${movie.thumbnail}" class="poster-img" loading="lazy">` : `<div class="poster-placeholder"><i class="fa fa-film"></i></div>`}
+                <div class="poster-hover-overlay">
+                  ${movie.thumbnail ? `<img src="${movie.thumbnail}" class="hover-bg-img" loading="lazy">` : ''}
+                  <div class="hover-overlay-gradient"></div>
+                  <div class="hover-overlay-content">
+                    <span class="hover-overlay-main-title">${movie.title}</span>
+                  </div>
+                </div>
+              </div>
+              ${categoryBadge}
+            </div>
+          `;
+        }).join('');
+
+        rowsHtml += `
+          <div class="marquee-row-wrapper">
+            <div class="marquee-track ${direction}" onclick="toggleMarqueePause(this)">
+              <div class="marquee-group">${cardsHtml}</div>
+              <div class="marquee-group">${cardsHtml}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      resultsDiv.innerHTML = `
+        <div class="trending-showcase-container">
+          <h2 style="font-family: var(--font-outfit); font-size: 18px; font-weight: 700; margin-bottom: 20px; color: var(--text);">⚡ Trending & Latest Releases</h2>
+          ${rowsHtml}
+        </div>
+      `;
+
+      // Apply current category filter if one is active
+      filterShowcaseByCategory(currentCategory);
+    }
+
+    function filterShowcaseByCategory(category) {
+      document.querySelectorAll('.movie-card.static-overlay').forEach(card => {
+        const cat = card.getAttribute('data-category');
+        if (category === 'All' || cat === category.toUpperCase() || (category === 'Anime' && cat === 'ANIMEFLIX')) {
+          card.classList.remove('hidden-card');
+        } else {
+          card.classList.add('hidden-card');
+        }
+      });
+    }
+
+    function toggleMarqueePause(track) {
+      track.classList.toggle('paused');
+    }
+
     function selectCategory(cat) {
       currentCategory = cat;
       document.querySelectorAll('.cat-btn').forEach(btn => {
@@ -1808,6 +2069,11 @@
       });
       
       const q = document.getElementById('search-box').value.trim();
+      
+      if (q.length < 2) {
+        filterShowcaseByCategory(cat);
+        return;
+      }
       
       // If we have cached results for the current search query, filter them locally instantly!
       if (allFetchedResults.length > 0 && q.toLowerCase() === lastSearchQuery.toLowerCase()) {
@@ -1881,9 +2147,9 @@
       resultsDiv.style.display = 'grid';
 
       if (q.length < 2) {
-        resultsDiv.innerHTML = '';
         allFetchedResults = [];
         lastSearchQuery = '';
+        renderTrendingShowcase();
         return;
       }
 

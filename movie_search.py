@@ -268,6 +268,69 @@ def extract_download_options(detail_url):
     return options
 
 
+def fetch_trending_movies(categories=None):
+    """
+    Fetch trending/latest movies and shows from the home pages of Bollywood, Hollywood, AnimeFlix.
+    """
+    domains = resolve_search_domains()
+    if not categories:
+        categories = ['bollywood', 'animeflix', 'hollywood']
+        
+    results = []
+    
+    def scrape_home(cat):
+        base_url = domains.get(cat)
+        if not base_url:
+            return []
+            
+        print(f"[*] Fetching home page for trending {cat.upper()} at: {base_url}")
+        
+        cat_results = []
+        try:
+            html = fetch_with_fallback(base_url)
+            articles = re.findall(r'<article[^>]*>(.*?)</article>', html, re.DOTALL)
+            
+            for art in articles:
+                href_match = re.search(r'href=["\']([^"\']+)["\']', art)
+                title_match = re.search(r'title=["\']([^"\']+)["\']', art)
+                img_match = re.search(r'src=["\']([^"\']+)["\']', art)
+                
+                if href_match and title_match:
+                    title = re.sub(r'&#\d+;', '', title_match.group(1)).strip()  # clean HTML entities
+                    title = re.sub(r'Download\s+', '', title, flags=re.IGNORECASE).strip()
+                    
+                    thumbnail = img_match.group(1) if img_match else ""
+                    # Handle lazy loaded images
+                    if 'wp-content/uploads' not in thumbnail:
+                        lazy_match = re.search(r'data-src=["\']([^"\']+)["\']', art)
+                        if lazy_match:
+                            thumbnail = lazy_match.group(1)
+                            
+                    item = {
+                        "title": title,
+                        "url": href_match.group(1),
+                        "thumbnail": thumbnail,
+                        "category": cat.upper()
+                    }
+                    cat_results.append(item)
+        except Exception as e:
+            print(f"[-] Fetching home page failed for category {cat}: {e}")
+            
+        return cat_results
+
+    # Run in parallel
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(scrape_home, cat): cat for cat in categories}
+        for future in as_completed(futures):
+            res = future.result()
+            results.extend(res)
+            
+    # Randomize results to make it a fun mix
+    import random
+    random.shuffle(results)
+    return results
+
+
 if __name__ == '__main__':
     # Live module testing
     import sys
