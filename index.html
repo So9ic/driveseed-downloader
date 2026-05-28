@@ -1379,9 +1379,9 @@
       } else {
         document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
         document.getElementById('direct-view').classList.add('active');
-        // Hide details and background when leaving search view
-        const bgElement = document.getElementById('details-page-bg');
-        if (bgElement) bgElement.style.opacity = '0';
+        
+        // Hide details and cleanly restore search view elements under-the-hood
+        closeDetails();
       }
     }
 
