@@ -1041,6 +1041,20 @@ class APIRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(f"Error loading index.html: {e}".encode('utf-8'))
             return
 
+        # 1b. Serve logo_optimized.png static image
+        if parsed.path == '/logo_optimized.png':
+            try:
+                with open('logo_optimized.png', 'rb') as f:
+                    content = f.read()
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/png')
+                self.end_headers()
+                self.wfile.write(content)
+            except Exception as e:
+                self.send_response(404)
+                self.end_headers()
+            return
+
         # 2. API Status endpoint
         if parsed.path == '/api/status':
             tg_text, tg_color = DOWNLOAD_MGR._get_telegram_ready_status()
