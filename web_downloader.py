@@ -23,8 +23,13 @@ import webbrowser
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import socketserver
-import tkinter as tk
-from tkinter import filedialog
+# Try importing tkinter for native folder picker support
+try:
+    import tkinter as tk
+    from tkinter import filedialog
+    HAS_TKINTER = True
+except ImportError:
+    HAS_TKINTER = False
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -270,6 +275,9 @@ class DownloaderBackend:
 
     # ── Folder picker native dialog ──
     def ask_directory(self) -> str:
+        if not HAS_TKINTER:
+            print("[-] ask_directory bypassed: Tkinter is not installed (running headless).", flush=True)
+            return ""
         try:
             root = tk.Tk()
             root.withdraw()
