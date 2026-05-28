@@ -3,3 +3,4 @@ __pycache__/
 *.session
 wget-log
 logo.png
+logo_base64.txt
