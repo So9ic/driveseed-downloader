@@ -257,7 +257,7 @@
       background: rgba(18, 18, 28, 0.6);
       border: 1px solid var(--border);
       border-radius: 14px;
-      padding: 14px 16px 14px 48px;
+      padding: 14px 44px 14px 48px; /* Increased right padding to prevent overlay with cross button */
       color: var(--text);
       font-family: var(--font-inter);
       font-size: 14px;
@@ -274,6 +274,37 @@
 
     .search-input:focus + svg {
       color: var(--accent);
+    }
+
+    .clear-search-btn {
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      border-radius: 50%;
+      transition: color 0.2s, background-color 0.2s;
+    }
+
+    .clear-search-btn:hover {
+      color: var(--text);
+      background-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .clear-search-btn svg {
+      position: static !important;
+      transform: none !important;
+      width: 16px !important;
+      height: 16px !important;
+      pointer-events: auto !important;
+      color: currentColor !important;
     }
 
     /* Horizontal Category Scroller */
@@ -1897,6 +1928,9 @@
         <div class="search-input-wrap">
           <input type="text" class="search-input" id="search-box" placeholder="Type movie, season, or show title to search…" onkeyup="onSearchKeyup(event)">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+          <button class="clear-search-btn" id="clear-search-btn" onclick="clearSearch()" title="Clear search">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+          </button>
         </div>
       </div>
 
@@ -2238,9 +2272,31 @@
       }
     }
 
+    function clearSearch() {
+      const searchBox = document.getElementById('search-box');
+      if (searchBox) {
+        searchBox.value = '';
+        toggleClearButton();
+        triggerSearch();
+      }
+    }
+
+    function toggleClearButton() {
+      const searchBox = document.getElementById('search-box');
+      const clearBtn = document.getElementById('clear-search-btn');
+      if (searchBox && clearBtn) {
+        if (searchBox.value.length > 0) {
+          clearBtn.style.display = 'flex';
+        } else {
+          clearBtn.style.display = 'none';
+        }
+      }
+    }
+
     // Debounced Search triggers
     let searchDebounceTimer = null;
     function onSearchKeyup(e) {
+      toggleClearButton();
       if (e.key === 'Enter') {
         clearTimeout(searchDebounceTimer);
         triggerSearch();
@@ -2251,6 +2307,7 @@
     }
 
     function triggerSearch() {
+      toggleClearButton();
       const q = document.getElementById('search-box').value.trim();
       const resultsDiv = document.getElementById('search-results');
       const detailPanel = document.getElementById('detail-panel');
