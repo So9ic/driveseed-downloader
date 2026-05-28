@@ -1046,7 +1046,7 @@
               // Keep displaying the skeleton loader while the server is resolving
               return;
             }
-            list.innerHTML = '<div style="text-align: center; color: var(--text-dim); padding: 60px 0;">No active or completed downloads in queue.</div>';
+            list.innerHTML = '';
             return;
           }
 
