@@ -8,3 +8,7 @@ favico.png
 favico_base64.txt
 banner.png
 banner_optimized.jpg
+
+# Cloudflare Wrangler Pinger Project
+pinger-js/
+.wrangler/
