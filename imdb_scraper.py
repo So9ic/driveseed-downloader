@@ -42,7 +42,7 @@ def get_imdb_id(query: str) -> str:
     return None
 
 if __name__ == "__main__":
-    test_queries = ["The Boys", "House M.D.", "13 Reasons Why", "Inception"]
+    test_queries = ["The Boys", "House md", "13 Reasons Why", "Inception"]
     print("--- Running IMDb Scraper Tests ---")
     for q in test_queries:
         imdb_id = get_imdb_id(q)

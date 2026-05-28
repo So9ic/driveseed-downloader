@@ -63,8 +63,10 @@ except ImportError:
 
 try:
     from movie_search import search_movies, extract_download_options, resolve_search_domains
+    from imdb_scraper import get_imdb_id
 except ImportError:
-    pass
+    def get_imdb_id(q): return None
+
 
 # Shared requests session
 def make_session():
@@ -1104,25 +1106,48 @@ class APIRequestHandler(BaseHTTPRequestHandler):
             # Execute streaming search and write SSE events chunk-by-chunk in real time!
             try:
                 write_lock = threading.Lock()
+                sent_urls = set()
 
                 def _on_result(item):
-                    event_data = {
-                        "status": "item",
-                        "item": {
-                            "title": item.get("title", ""),
-                            "url": item.get("url", ""),
-                            "thumbnail": item.get("thumbnail", ""),
-                            "category": item.get("category", "All")
-                        }
-                    }
+                    url = item.get("url", "")
+                    if not url:
+                        return
                     with write_lock:
+                        if url in sent_urls:
+                            return
+                        sent_urls.add(url)
+                        
+                        event_data = {
+                            "status": "item",
+                            "item": {
+                                "title": item.get("title", ""),
+                                "url": url,
+                                "thumbnail": item.get("thumbnail", ""),
+                                "category": item.get("category", "All")
+                            }
+                        }
                         try:
                             self.wfile.write(f"data: {json.dumps(event_data)}\n\n".encode('utf-8'))
                             self.wfile.flush()
                         except Exception:
                             pass
 
-                # Perform parallel category search using callback
+                # 1. Fetch IMDb tt ID for accurate priority searching
+                imdb_id = None
+                try:
+                    imdb_id = get_imdb_id(query)
+                except Exception as ex:
+                    print(f"[-] IMDb scraper failed to retrieve ID: {ex}")
+
+                # 2. If tt ID found, search it first to stream results to place them at the very top!
+                if imdb_id:
+                    print(f"[+] Found IMDb ID '{imdb_id}' for query '{query}'. Performing priority search...")
+                    try:
+                        search_movies(imdb_id, cats, on_result_callback=_on_result)
+                    except Exception as ex:
+                        print(f"[-] Priority search for IMDb ID '{imdb_id}' failed: {ex}")
+
+                # 3. Perform original text search in parallel (deduplicated by sent_urls set)
                 search_movies(query, cats, on_result_callback=_on_result)
                 
                 # Write search completion event
