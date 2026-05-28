@@ -1317,6 +1317,14 @@
     <div id="direct-view" class="view-panel">
       <div class="direct-container">
         
+        <!-- Back to Movie button row, hidden by default -->
+        <div class="direct-back-row" id="direct-back-row" style="display: none; margin-bottom: 20px;">
+          <button class="back-btn-direct" onclick="goBackToMovie()" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--text-main); padding: 10px 20px; border-radius: 12px; font-weight: 600; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: all 0.2s ease; backdrop-filter: blur(10px); box-shadow: var(--shadow-sm);">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px; stroke-width: 2.5;"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"></path></svg>
+            Back to Movie Details
+          </button>
+        </div>
+
         <div class="direct-input-row">
           <input type="text" id="direct-url-box" class="direct-input" placeholder="Paste direct link here (driveseed / modpro / animeflix / leechpro) and hit enter…">
           <button class="go-btn" onclick="startDirectDownload()">Go</button>
@@ -1382,6 +1390,10 @@
         
         // Hide details and cleanly restore search view elements under-the-hood
         closeDetails();
+        
+        // Reset Direct tab back button & show the direct link input row
+        document.getElementById('direct-back-row').style.display = 'none';
+        document.querySelector('.direct-input-row').style.display = 'flex';
       }
     }
 
@@ -2041,13 +2053,46 @@
       document.getElementById('search-results').style.display = 'grid';
     }
 
+    function showDirectFromDetails() {
+      activeTab = 'direct';
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.view-panel').forEach(panel => panel.classList.remove('active'));
+      
+      document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
+      document.getElementById('direct-view').classList.add('active');
+      
+      // Hide the top header navigation tabs & direct input box
+      document.querySelector('.tabs-container').style.display = 'none';
+      document.querySelector('.direct-input-row').style.display = 'none';
+      
+      // Show the premium back button
+      document.getElementById('direct-back-row').style.display = 'block';
+    }
+
+    function goBackToMovie() {
+      // Switch back to search tab under-the-hood
+      activeTab = 'search';
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.view-panel').forEach(panel => panel.classList.remove('active'));
+      
+      document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
+      document.getElementById('search-view').classList.add('active');
+      
+      // Hide the back button, restore direct input row
+      document.getElementById('direct-back-row').style.display = 'none';
+      document.querySelector('.direct-input-row').style.display = 'flex';
+      
+      // Keep tabs container hidden since the user is in details view
+      document.querySelector('.tabs-container').style.display = 'none';
+    }
+
     // Download API communication handlers
     function startDownload(url) {
       url = decodeURIComponent(url);
 
       if (isCloudMode) {
         // Skip folder chooser in cloud mode
-        switchTab('direct');
+        showDirectFromDetails();
         fetch('/api/download', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2065,7 +2110,7 @@
           }
           
           // Switch to Direct URL tab immediately to watch downloads progress
-          switchTab('direct');
+          showDirectFromDetails();
           
           fetch('/api/download', {
             method: 'POST',
