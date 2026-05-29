@@ -832,65 +832,8 @@
             return a[0].localeCompare(b[0]);
           });
 
-          // Render beautiful page-level metadata card at the top if present
-          let metaHtml = '';
-          if (data.metadata && Object.keys(data.metadata).length > 0) {
-            const m = data.metadata;
-            const cleanKey = (k) => k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-            
-            metaHtml = `
-              <div class="movie-meta-card" style="
-                background: rgba(255, 255, 255, 0.02);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 16px;
-                padding: 20px;
-                margin-bottom: 24px;
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                gap: 16px;
-                backdrop-filter: blur(12px);
-                box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
-              ">
-            `;
-            
-            const getIcon = (k) => {
-              const kl = k.toLowerCase();
-              if (kl.includes('lang')) return '🔊';
-              if (kl.includes('year') || kl.includes('releas') || kl.includes('aired') || kl.includes('premier')) return '📅';
-              if (kl.includes('size')) return '📦';
-              if (kl.includes('director')) return '🎬';
-              if (kl.includes('star')) return '⭐';
-              if (kl.includes('writer')) return '✍️';
-              if (kl.includes('studio')) return '🏢';
-              if (kl.includes('genre')) return '🎭';
-              if (kl.includes('duration') || kl.includes('time') || kl.includes('run')) return '⏱️';
-              if (kl.includes('status')) return '📊';
-              if (kl.includes('episode')) return '📺';
-              if (kl.includes('sub')) return '📝';
-              return 'ℹ️';
-            };
-
-            Object.entries(m).forEach(([key, val]) => {
-              // Skip large lists or duplicate tags
-              if (key === 'quality' || key === 'size' || key === 'full_name') return;
-              
-              metaHtml += `
-                <div class="meta-field" style="display: flex; flex-direction: column; gap: 4px;">
-                  <span class="meta-field-label" style="font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 6px; font-weight: 600;">
-                    ${getIcon(key)} ${cleanKey(key)}
-                  </span>
-                  <span class="meta-field-value" style="font-size: 14px; color: var(--text-main); font-weight: 500;">
-                    ${val}
-                  </span>
-                </div>
-              `;
-            });
-            
-            metaHtml += `</div>`;
-          }
-
           // 4. Build accordion HTML structure (auto-expanded if there is only 1 item)
-          let accordionHtml = metaHtml + `<div class="accordion-list">`;
+          let accordionHtml = `<div class="accordion-list">`;
           
           entries.forEach(([seasonName, items], index) => {
             const isSingleItem = entries.length === 1;
