@@ -1014,37 +1014,129 @@ class DownloaderBackend:
 # Global Download Manager reference
 DOWNLOAD_MGR = DownloaderBackend()
 
+TRENDING_CACHE_FILE = os.path.join('static', 'trending_cache.json')
 TRENDING_CACHE = {
     "data": None,
     "timestamp": 0
 }
 
-def get_cached_trending():
-    now = time.time()
-    if TRENDING_CACHE["data"] is not None and now - TRENDING_CACHE["timestamp"] < 1800:
-        return TRENDING_CACHE["data"]
-    
-    # If cache is expired or empty, trigger background update thread
-    def update_trending_in_background():
-        try:
-            from movie_search import fetch_trending_movies
-            # Fetch sequentially to keep CPU/thread usage extremely low on cloud containers
-            data = fetch_trending_movies()
-            if data:
-                TRENDING_CACHE["data"] = data
-                TRENDING_CACHE["timestamp"] = time.time()
-                print("[+] Successfully pre-cached trending movies in background thread", flush=True)
-        except Exception as e:
-            print(f"[-] Background trending update failed: {e}", flush=True)
+def load_trending_cache_from_file():
+    """Load cached trending movies from the local JSON file on startup."""
+    global TRENDING_CACHE
+    try:
+        if os.path.exists(TRENDING_CACHE_FILE):
+            with open(TRENDING_CACHE_FILE, 'r', encoding='utf-8') as f:
+                loaded = json.load(f)
+                if isinstance(loaded, dict) and "data" in loaded:
+                    TRENDING_CACHE["data"] = loaded["data"]
+                    TRENDING_CACHE["timestamp"] = loaded.get("timestamp", 0)
+                    print(f"[+] Loaded {len(TRENDING_CACHE['data'])} trending movies from persistent local cache file.", flush=True)
+    except Exception as e:
+        print(f"[-] Failed to load local trending cache: {e}", flush=True)
 
-    # Launch background thread to prevent HTTP gateway timeout or high CPU spikes
-    threading.Thread(target=update_trending_in_background, daemon=True).start()
-    
-    # If we have old data, return it immediately. 
+def save_trending_cache_to_file():
+    """Save the current in-memory cache to the local JSON file."""
+    try:
+        os.makedirs(os.path.dirname(TRENDING_CACHE_FILE), exist_ok=True)
+        with open(TRENDING_CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(TRENDING_CACHE, f, indent=2, ensure_ascii=False)
+        print("[+] Saved trending movies cache to persistent local cache file.", flush=True)
+    except Exception as e:
+        print(f"[-] Failed to save trending cache to file: {e}", flush=True)
+
+def force_refresh_trending_cache():
+    """Fetch new trending movies from sources, optimize/cache their thumbnails, and update the cache."""
+    try:
+        from movie_search import fetch_trending_movies
+        print("[*] Performing scheduled refresh of trending movies showcase...", flush=True)
+        data = fetch_trending_movies()
+        if data:
+            TRENDING_CACHE["data"] = data
+            TRENDING_CACHE["timestamp"] = time.time()
+            save_trending_cache_to_file()
+            print("[+] Showcase cache successfully updated & persisted!", flush=True)
+            
+            # Pre-cache & optimize thumbnails in the background so they are ready before the first user load!
+            def pre_cache_thumbnails():
+                print("[*] Pre-caching & optimizing movie thumbnails in the background...", flush=True)
+                for item in data:
+                    thumb_url = item.get("thumbnail")
+                    if not thumb_url:
+                        continue
+                    try:
+                        import hashlib
+                        url_hash = hashlib.md5(thumb_url.encode('utf-8')).hexdigest()
+                        cache_path = os.path.join('static', 'thumbnail_cache', f"{url_hash}.webp")
+                        # If not already cached, pre-fetch and optimize it!
+                        if not os.path.exists(cache_path):
+                            from PIL import Image
+                            import requests
+                            import io
+                            headers = {'User-Agent': 'Mozilla/5.0'}
+                            resp = requests.get(thumb_url, headers=headers, timeout=8)
+                            if resp.status_code == 200:
+                                os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+                                img = Image.open(io.BytesIO(resp.content))
+                                if img.mode not in ('RGB', 'RGBA'):
+                                    img = img.convert('RGB')
+                                max_width = 320
+                                if img.width > max_width:
+                                    ratio = max_width / float(img.width)
+                                    new_height = int(float(img.height) * float(ratio))
+                                    img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+                                img.save(cache_path, 'WEBP', quality=80)
+                    except Exception as te:
+                        print(f"[-] Failed to pre-cache thumbnail {thumb_url}: {te}", flush=True)
+                print("[+] Thumbnails pre-caching finished successfully!", flush=True)
+            
+            threading.Thread(target=pre_cache_thumbnails, daemon=True).start()
+            
+    except Exception as e:
+        print(f"[-] Showcase automatic refresh failed: {e}", flush=True)
+
+def start_cache_scheduler():
+    """Start a background scheduler thread that refreshes the cache every midnight (IST/local)."""
+    import datetime
+    # 1. Load cache from file if it exists
+    load_trending_cache_from_file()
+
+    # 2. If no cache data is present or cache is older than 1 day, trigger initial fetch immediately
+    now = time.time()
+    if not TRENDING_CACHE["data"] or (now - TRENDING_CACHE["timestamp"] > 86400):
+        print("[*] Cache missing or older than 1 day. Triggering initial fetch...", flush=True)
+        threading.Thread(target=force_refresh_trending_cache, daemon=True).start()
+
+    # 3. Scheduler loop targeting midnight
+    def scheduler_loop():
+        import datetime
+        while True:
+            # Calculate seconds until next midnight
+            now_dt = datetime.datetime.now()
+            tomorrow_dt = now_dt + datetime.timedelta(days=1)
+            midnight_dt = datetime.datetime(tomorrow_dt.year, tomorrow_dt.month, tomorrow_dt.day, 0, 0, 10) # 10 seconds past midnight
+            seconds_until_midnight = (midnight_dt - now_dt).total_seconds()
+            
+            print(f"[+] Cache Scheduler: Next midnight refresh in {seconds_until_midnight:.1f} seconds (~{seconds_until_midnight/3600:.2f} hours).", flush=True)
+            
+            # Sleep until midnight (or max 1 hour at a time to keep thread responsive)
+            sleep_duration = min(seconds_until_midnight, 3600)
+            time.sleep(sleep_duration)
+            
+            # Re-check if we reached midnight
+            now_now = datetime.datetime.now()
+            if now_now.hour == 0 and now_now.minute == 0:
+                print("[*] Midnight reached! Purging cache and starting fresh scheduled fetch...", flush=True)
+                force_refresh_trending_cache()
+                time.sleep(65) # make sure we don't double trigger in the same minute
+
+    threading.Thread(target=scheduler_loop, daemon=True).start()
+
+def get_cached_trending():
+    # If we have cached data, serve it instantly! (0ms response time)
     if TRENDING_CACHE["data"]:
         return TRENDING_CACHE["data"]
         
-    # Return placeholder items so UI renders a stunning carousel instantly
+    # Return placeholder items as fallback so UI renders immediately
     return [
         {
             "title": "Deadpool & Wolverine (2024) [Multi-Audio] [1080p]",
@@ -1560,6 +1652,9 @@ def main():
                                                              
     """, flush=True)
     print("=== MoviesCrackd Standalone Web Downloader Server ===", flush=True)
+
+    # Initialize and pre-warm persistent trending marquee cache & midnight scheduler
+    start_cache_scheduler()
 
     port = int(os.environ.get("PORT", 5555))
     server_address = ('', port)
