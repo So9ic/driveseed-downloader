@@ -8,6 +8,32 @@
     let lastSearchQuery = '';
     let trendingMoviesList = [];
 
+    // 1-week TTL search result cache using localStorage
+    const SEARCH_CACHE_PREFIX = 'mcrackd_search_';
+    const SEARCH_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 1 week in ms
+
+    function getSearchCache(query) {
+      try {
+        const raw = localStorage.getItem(SEARCH_CACHE_PREFIX + query.toLowerCase());
+        if (!raw) return null;
+        const cached = JSON.parse(raw);
+        if (Date.now() - cached.ts > SEARCH_CACHE_TTL) {
+          localStorage.removeItem(SEARCH_CACHE_PREFIX + query.toLowerCase());
+          return null;
+        }
+        return cached.results;
+      } catch (e) { return null; }
+    }
+
+    function setSearchCache(query, results) {
+      try {
+        localStorage.setItem(SEARCH_CACHE_PREFIX + query.toLowerCase(), JSON.stringify({
+          ts: Date.now(),
+          results: results
+        }));
+      } catch (e) { /* localStorage full — silently fail */ }
+    }
+
     // Startup Init
     window.addEventListener('DOMContentLoaded', () => {
 
@@ -604,9 +630,17 @@
         activeSearchController.abort();
       }
 
-      // Reset cache and track new query
+      // Reset and track new query
       allFetchedResults = [];
       lastSearchQuery = q;
+
+      // Check 1-week TTL localStorage cache — instant results if found!
+      const cachedResults = getSearchCache(q);
+      if (cachedResults && cachedResults.length > 0) {
+        allFetchedResults = cachedResults;
+        filterAndRenderResultsLocally(q);
+        return;
+      }
 
       // Render search skeletons loading states
       resultsDiv.innerHTML = Array.from({length: 6}).map(() => `
@@ -643,6 +677,8 @@
             if (allFetchedResults.length === 0) {
               resultsDiv.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px;">No results found.</div>';
             } else {
+              // Save to 1-week TTL localStorage cache for instant repeat searches!
+              setSearchCache(q, allFetchedResults);
               // Final filter and redraw altogether
               filterAndRenderResultsLocally(q);
             }
