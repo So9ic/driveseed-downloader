@@ -1696,35 +1696,7 @@
       flex-shrink: 0;
     }
 
-    .marquee-track.left {
-      animation: marquee-left 75s linear infinite;
-    }
 
-    .marquee-track.right {
-      animation: marquee-right 75s linear infinite;
-    }
-
-    /* Pause sliding when hovering row */
-    @media (hover: hover) and (min-width: 769px) {
-      .marquee-row-wrapper:hover .marquee-track {
-        animation-play-state: paused;
-      }
-    }
-
-    /* Toggle pause class for mobile/click */
-    .marquee-track.paused {
-      animation-play-state: paused !important;
-    }
-
-    @keyframes marquee-left {
-      0% { transform: translate3d(0, 0, 0); }
-      100% { transform: translate3d(-50%, 0, 0); }
-    }
-
-    @keyframes marquee-right {
-      0% { transform: translate3d(-50%, 0, 0); }
-      100% { transform: translate3d(0, 0, 0); }
-    }
 
     /* Showcase static overlay card */
     .movie-card.static-overlay {
@@ -1894,12 +1866,7 @@
       .marquee-row-wrapper::after {
         width: 10vw !important;
       }
-      .marquee-track.left {
-        animation-duration: 55s !important;
-      }
-      .marquee-track.right {
-        animation-duration: 55s !important;
-      }
+
     }
 
 

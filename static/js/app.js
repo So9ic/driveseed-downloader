@@ -446,14 +446,12 @@
           requestAnimationFrame(tick);
         }
 
-        // Defer initial measurement and loop start to next frames to avoid synchronous layout thrashing
-        // This guarantees the browser has finished layout passes, completely avoiding the "comeback jitter"!
+        // Defer initial measurement and loop start to next frame to avoid synchronous layout thrashing
+        // This guarantees style resolutions happen on paint pass, completely avoiding layout thrashing!
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            if (!alive || !track.isConnected) return;
-            measureWrapDist();
-            tick();
-          });
+          if (!alive || !track.isConnected) return;
+          measureWrapDist();
+          tick();
         });
 
         // Register cleanup for this track
