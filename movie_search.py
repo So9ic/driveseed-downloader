@@ -249,12 +249,18 @@ def extract_download_options(detail_url):
                 clean_text = re.sub(r'<[^>]+>', '', content).strip()
                 clean_text = re.sub(r'\s+', ' ', clean_text)
                 
+                # Strip leading/trailing separator symbols (hyphens, dashes, colons, dots)
+                clean_text = clean_text.strip(' -–—:·.').strip()
+                
                 # Check if this text block looks like a valid quality/resolution/size label
                 text_lower = clean_text.lower()
-                has_res = any(r in text_lower for r in ['480p', '720p', '1080p', '2160p', '4k', '8k'])
+                has_res = any(r in text_lower for r in ['480p', '720p', '1080p', '2160p', '4k', '8k']) or bool(re.search(r'\b(480|720|1080|2160)\b', text_lower))
                 has_size = bool(re.search(r'\b\d+(?:\.\d+)?\s*(?:mb|gb)\b', text_lower))
                 
                 if clean_text and (has_res or has_size):
+                    # Normalize standalone resolutions (e.g. "720" -> "720p")
+                    if re.match(r'^(480|720|1080|2160)$', clean_text):
+                        clean_text = clean_text + 'p'
                     quality_label = clean_text
                     break
             

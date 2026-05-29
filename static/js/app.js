@@ -526,9 +526,9 @@
         title = title.replace(sizeMatch[0], '').trim();
       }
       
-      // 2. Season/Group extraction: e.g. "Season 1", "S01", "Bonus Episode (Episode 8)", "OVA", "Movie"
+      // 2. Season/Group extraction: e.g. "Season 1", "S01", "Episode 1", "Bonus Episode (Episode 8)", "OVA", "Movie"
       let season = '';
-      const seasonMatch = title.match(/(Season\s+\d+|S\d+|\bBonus\s+Episode\s*\(Episode\s*\d+\)|\bBonus\s+Episode|\bSpecial\s+Episode|\bOVA\b|\bMovie\b|\bComplete\s+Pack)/i);
+      const seasonMatch = title.match(/(Season\s+\d+|S\d+|\bEpisode\s+\d+|\bEp\s*\d+|\bBonus\s+Episode\s*\(Episode\s*\d+\)|\bBonus\s+Episode|\bSpecial\s+Episode|\bOVA\b|\bMovie\b|\bComplete\s+Pack)/i);
       if (seasonMatch) {
         season = seasonMatch[1].trim();
         const lowerSeason = season.toLowerCase();
