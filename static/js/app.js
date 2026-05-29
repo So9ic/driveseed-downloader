@@ -553,10 +553,34 @@
 
       // 4. Language extraction: e.g. (Hindi-English) or [Multi-Audio]
       let lang = '';
-      const langMatch = title.match(/[\[\(]([a-zA-Z0-9\s-]+)[\]\)]/i);
-      if (langMatch) {
-        lang = langMatch[1];
-        title = title.replace(langMatch[0], '').trim();
+      const allParenthesized = [...title.matchAll(/[\[\(]([a-zA-Z0-9\s-]+)[\]\)]/gi)];
+      for (const match of allParenthesized) {
+        const potentialLang = match[1].trim();
+        // Skip if it's just a 4-digit year (e.g. 2009, 1995, 2024)
+        if (/^\d{4}$/.test(potentialLang)) {
+          continue;
+        }
+        lang = potentialLang;
+        title = title.replace(match[0], '').trim();
+        break;
+      }
+
+      // 4b. Fallback: scan for standalone language keywords in the title if no bracketed language found
+      if (!lang) {
+        const commonLangs = [
+          'dual audio', 'multi audio', 'multi-audio', 'single audio',
+          'hindi', 'english', 'tamil', 'telugu', 'malayalam', 'kannada',
+          'bengali', 'marathi', 'punjabi', 'japanese', 'chinese', 'korean',
+          'spanish', 'french'
+        ];
+        const langRegex = new RegExp(`\\b(${commonLangs.join('|')})\\b`, 'i');
+        const standaloneMatch = title.match(langRegex);
+        if (standaloneMatch) {
+          lang = standaloneMatch[1].trim();
+          // Normalize capitalization (e.g. "hindi" -> "Hindi", "multi-audio" -> "Multi-Audio")
+          lang = lang.replace(/\b\w/g, c => c.toUpperCase());
+          title = title.replace(standaloneMatch[0], '').trim();
+        }
       }
 
       // 5. Split remaining tags
