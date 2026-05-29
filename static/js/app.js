@@ -295,8 +295,8 @@
           const gap = parseFloat(getComputedStyle(track).gap) || 24;
           cachedWrapDist = group.offsetWidth + gap;
         }
-        measureWrapDist();
-        window.addEventListener('resize', measureWrapDist);
+        let resizeListener = () => { measureWrapDist(); };
+        window.addEventListener('resize', resizeListener);
 
         function wrapOffset(val) {
           if (cachedWrapDist <= 0) return val;
@@ -446,15 +446,34 @@
           requestAnimationFrame(tick);
         }
 
-        tick();
+        // Defer initial measurement and loop start to next frames to avoid synchronous layout thrashing
+        // This guarantees the browser has finished layout passes, completely avoiding the "comeback jitter"!
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (!alive || !track.isConnected) return;
+            measureWrapDist();
+            tick();
+          });
+        });
 
         // Register cleanup for this track
         _marqueeCleanups.push(() => {
           alive = false;
           pauseObserver.disconnect();
-          window.removeEventListener('resize', measureWrapDist);
+          window.removeEventListener('resize', resizeListener);
         });
       });
+
+      // Progressively load all remaining off-screen images after 750ms so visible cards get 100% initial bandwidth
+      setTimeout(() => {
+        document.querySelectorAll('.lazy-showcase-img').forEach(img => {
+          if (img.dataset.src) {
+            img.src = img.dataset.src;
+            img.removeAttribute('data-src');
+            img.classList.remove('lazy-showcase-img');
+          }
+        });
+      }, 750);
     }
 
     function selectCategory(cat) {
