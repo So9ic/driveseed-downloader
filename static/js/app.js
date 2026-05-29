@@ -452,6 +452,12 @@
           if (!alive || !track.isConnected) return;
           measureWrapDist();
           tick();
+          
+          // Smooth fade-in once the first frame has successfully calculated layouts & translates.
+          // This completely hides any layout-settling or frame drops from the user's vision!
+          if (wrapper) {
+            wrapper.classList.add('visible');
+          }
         });
 
         // Register cleanup for this track

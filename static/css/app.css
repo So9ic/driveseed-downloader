@@ -1648,6 +1648,13 @@
       width: 100%;
       position: relative;
       padding: 10px 0;
+      opacity: 0;
+      transition: opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+      will-change: opacity;
+    }
+
+    .marquee-row-wrapper.visible {
+      opacity: 1;
     }
 
     .marquee-row-wrapper::before {
