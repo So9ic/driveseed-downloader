@@ -440,8 +440,9 @@
             
             // Generate Ghost autocomplete text
             if (currentSuggestions.length > 0) {
-              const firstSug = currentSuggestions[0].title;
-              if (firstSug.toLowerCase().startsWith(query.toLowerCase())) {
+              const matchingSug = currentSuggestions.find(sug => sug.title.toLowerCase().startsWith(query.toLowerCase()));
+              if (matchingSug) {
+                const firstSug = matchingSug.title;
                 const completion = firstSug.slice(query.length);
                 currentGhostText = completion;
                 ghostEl.innerHTML = `<span style="color: transparent;">${escapeHtml(query)}</span><span class="search-ghost-text">${escapeHtml(completion)}</span>`;

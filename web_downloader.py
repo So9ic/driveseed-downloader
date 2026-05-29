@@ -1183,7 +1183,6 @@ class APIRequestHandler(BaseHTTPRequestHandler):
 
             import hashlib
             import io
-            import requests
             from PIL import Image
             
             # Create a unique filename for the cached WebP image
