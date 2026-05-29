@@ -264,6 +264,21 @@ def extract_download_options(detail_url):
             if h_matches:
                 clean_text = re.sub(r'<[^>]+>', '', h_matches[-1]).strip()
                 heading_label = re.sub(r'\s+', ' ', clean_text)
+                
+                # Check if this heading is essentially just a quality/resolution label (e.g. "720p x265")
+                hl_lower = heading_label.lower()
+                is_just_quality = any(r in hl_lower for r in ['480p', '720p', '1080p', '2160p', '4k', '8k'])
+                
+                if is_just_quality and len(h_matches) > 1:
+                    # Look at the previous heading to see if it is a structural header
+                    prev_text = re.sub(r'<[^>]+>', '', h_matches[-2]).strip()
+                    prev_label = re.sub(r'\s+', ' ', prev_text)
+                    prev_lower = prev_label.lower()
+                    
+                    # If the previous heading contains structural keywords (season, episode, special, bonus, etc.)
+                    structural_keywords = ['season', 'episode', 'special', 'bonus', 'pack', 'batch', 'ova', 'movie']
+                    if any(k in prev_lower for k in structural_keywords):
+                        heading_label = f"{prev_label} - {heading_label}"
             
             # Combine them if appropriate
             if heading_label and quality_label:
