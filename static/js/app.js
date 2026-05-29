@@ -447,14 +447,14 @@
         }
 
         // Defer initial measurement and loop start to next frame to avoid synchronous layout thrashing
-        // This guarantees style resolutions happen on paint pass, completely avoiding layout thrashing!
+        // style resolutions happen on paint pass, completely avoiding layout thrashing!
         requestAnimationFrame(() => {
           if (!alive || !track.isConnected) return;
           measureWrapDist();
           tick();
           
           // Smooth fade-in once the first frame has successfully calculated layouts & translates.
-          // This completely hides any layout-settling or frame drops from the user's vision!
+          // completely hides any layout-settling or frame drops from the user's vision!
           if (wrapper) {
             wrapper.classList.add('visible');
           }
