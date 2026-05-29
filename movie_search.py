@@ -231,12 +231,40 @@ def extract_download_options(detail_url):
     Fetch a movie detail page and extract clean download links mapped to their seasons/qualities.
     Uses backward-traversal heuristic to find corresponding heading tags.
     """
+    import html as html_parser
     print(f"[*] Extracting download options from: {detail_url}")
     options = []
     try:
-        html = fetch_with_fallback(detail_url)
+        raw_html = fetch_with_fallback(detail_url)
+        # Decode HTML entities (e.g. curly quotes, double primes like &#8221; and &#8243;)
+        html = html_parser.unescape(raw_html)
         
-        # Regex to find all backend /archives/ links
+        def _find_best_header(lookback):
+            # 1. Search for potential inline headers or label elements (h1-h6, strong, b, p, span)
+            matches = re.findall(r'<(h[1-6]|strong|b|p|span)[^>]*>(.*?)</\1>', lookback, re.IGNORECASE | re.DOTALL)
+            
+            # 2. Process from right to left (closest to the download button first)
+            for tag, content in reversed(matches):
+                clean_text = re.sub(r'<[^>]+>', '', content).strip()
+                clean_text = re.sub(r'\s+', ' ', clean_text)
+                
+                # Check if this text block looks like a valid quality/resolution/size label
+                text_lower = clean_text.lower()
+                has_res = any(r in text_lower for r in ['480p', '720p', '1080p', '2160p', '4k', '8k'])
+                has_size = bool(re.search(r'\b\d+(?:\.\d+)?\s*(?:mb|gb)\b', text_lower))
+                
+                if clean_text and (has_res or has_size):
+                    return clean_text
+                    
+            # 3. Fallback to the last h1-h6 tag if any exist
+            h_matches = re.findall(r'<h[1-6][^>]*>(.*?)</h[1-6]>', lookback, re.IGNORECASE | re.DOTALL)
+            if h_matches:
+                clean_text = re.sub(r'<[^>]+>', '', h_matches[-1]).strip()
+                return re.sub(r'\s+', ' ', clean_text)
+                
+            return "Direct Download"
+
+        # 1. Standard matches
         matches = list(re.finditer(r'<a\s+[^>]*href=["\']([^"\']*/archives/\d+)["\'][^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL))
         
         for m in matches:
@@ -246,15 +274,7 @@ def extract_download_options(detail_url):
             
             # Traversal backward up to 800 characters to find the nearest quality or description header
             lookback = html[max(0, m.start() - 800):m.start()]
-            
-            # Find all h1-h6 tags in this lookback region
-            headers = re.findall(r'<h[1-6][^>]*>(.*?)</h[1-6]>', lookback, re.IGNORECASE | re.DOTALL)
-            
-            if headers:
-                header_text = re.sub(r'<[^>]+>', '', headers[-1]).strip()
-                header_text = re.sub(r'\s+', ' ', header_text)  # sanitize spaces
-            else:
-                header_text = "Direct Download"
+            header_text = _find_best_header(lookback)
                 
             # Deduplicate within this page context (avoid adding identical options)
             if not any(opt["url"] == href for opt in options):
@@ -280,13 +300,7 @@ def extract_download_options(detail_url):
             btn_text = text_match.group(1).strip() if text_match else "Download"
             
             lookback = html[max(0, start_pos - 800):start_pos]
-            headers = re.findall(r'<h[1-6][^>]*>(.*?)</h[1-6]>', lookback, re.IGNORECASE | re.DOTALL)
-            
-            if headers:
-                header_text = re.sub(r'<[^>]+>', '', headers[-1]).strip()
-                header_text = re.sub(r'\s+', ' ', header_text)
-            else:
-                header_text = "Direct Download"
+            header_text = _find_best_header(lookback)
                 
             if not any(opt["url"] == href for opt in options):
                 options.append({
@@ -309,13 +323,7 @@ def extract_download_options(detail_url):
                 
             btn_text = "Download"
             lookback = html[max(0, start_pos - 800):start_pos]
-            headers = re.findall(r'<h[1-6][^>]*>(.*?)</h[1-6]>', lookback, re.IGNORECASE | re.DOTALL)
-            
-            if headers:
-                header_text = re.sub(r'<[^>]+>', '', headers[-1]).strip()
-                header_text = re.sub(r'\s+', ' ', header_text)
-            else:
-                header_text = "Direct Download"
+            header_text = _find_best_header(lookback)
                 
             options.append({
                 "quality": header_text,
