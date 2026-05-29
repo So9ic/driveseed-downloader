@@ -1658,6 +1658,8 @@
       background: linear-gradient(to right, #07070b 0%, rgba(7, 7, 11, 0) 100%);
       z-index: 10;
       pointer-events: none;
+      will-change: transform;
+      transform: translateZ(0);
     }
 
     .marquee-row-wrapper::after {
@@ -1668,6 +1670,8 @@
       background: linear-gradient(to left, #07070b 0%, rgba(7, 7, 11, 0) 100%);
       z-index: 10;
       pointer-events: none;
+      will-change: transform;
+      transform: translateZ(0);
     }
 
     .marquee-track {

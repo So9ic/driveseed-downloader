@@ -256,13 +256,16 @@
 
         const isLeft = track.classList.contains('left');
         const baseSpeed = isLeft ? -0.8 : 0.8;
-        const TRACK_GAP = 24; // matches CSS .marquee-track { gap: 24px }
+        
+        // Cache parent wrapper reference once (avoids DOM traversal every frame)
+        const wrapper = track.closest('.marquee-row-wrapper');
         
         let x = 0;
         let velocity = 0;
         let isDragging = false;
         let hasMoved = false;
         let isScrolling = false;
+        let trackPaused = false; // fast boolean mirror of .paused class
         
         let startX = 0;
         let startY = 0;
@@ -276,23 +279,21 @@
         track.style.transition = 'none';
 
         // Cache wrap distance — recalculate only on resize, not every frame
+        // Detects actual CSS gap dynamically instead of hardcoding
         function measureWrapDist() {
           const group = track.querySelector('.marquee-group');
-          cachedWrapDist = group ? group.offsetWidth + TRACK_GAP : 0;
+          if (!group) { cachedWrapDist = 0; return; }
+          const gap = parseFloat(getComputedStyle(track).gap) || 24;
+          cachedWrapDist = group.offsetWidth + gap;
         }
         measureWrapDist();
         window.addEventListener('resize', measureWrapDist);
 
         function wrapOffset(val) {
           if (cachedWrapDist <= 0) return val;
-          // Modulo-style wrapping (no while-loops, handles any offset)
           val = val % cachedWrapDist;
           if (val > 0) val -= cachedWrapDist;
           return val;
-        }
-
-        function updateTransform() {
-          track.style.transform = `translate3d(${x}px, 0, 0)`;
         }
 
         function onStart(clientX, clientY) {
@@ -353,7 +354,7 @@
           
           lastX = clientX;
           lastTime = now;
-          updateTransform();
+          track.style.transform = 'translate3d(' + x + 'px,0,0)';
         }
 
         function onEnd() {
@@ -402,6 +403,12 @@
           onEnd();
         });
 
+        // Mirror .paused class changes to a fast boolean (avoids classList.contains per frame)
+        const pauseObserver = new MutationObserver(() => {
+          trackPaused = track.classList.contains('paused');
+        });
+        pauseObserver.observe(track, { attributes: true, attributeFilter: ['class'] });
+
         // Smooth Physics Autoplay Tick Loop
         function tick() {
           if (!isDragging) {
@@ -413,16 +420,15 @@
               velocity = 0;
             }
 
-            // Hover-pause only on devices with real mouse hover
-            const isHovered = isHoverDevice && track.closest('.marquee-row-wrapper').matches(':hover');
-            const isPaused = track.classList.contains('paused');
+            // Hover-pause only on devices with real mouse hover (cached wrapper ref)
+            const isHovered = isHoverDevice && wrapper.matches(':hover');
             
-            if (!isHovered && !isPaused) {
+            if (!isHovered && !trackPaused) {
               x += baseSpeed;
             }
             
             x = wrapOffset(x);
-            updateTransform();
+            track.style.transform = 'translate3d(' + x + 'px,0,0)';
           }
           
           requestAnimationFrame(tick);
