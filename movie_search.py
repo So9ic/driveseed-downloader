@@ -315,8 +315,8 @@ def extract_download_options(detail_url):
             # Remove inner tags from button label (e.g. <span class='mb-text'>)
             btn_text = re.sub(r'<[^>]+>', '', m.group(2)).strip()
             
-            # Traversal backward up to 800 characters to find the nearest quality or description header
-            lookback = html[max(0, m.start() - 800):m.start()]
+            # Traversal backward up to 1500 characters to find the nearest quality or description header
+            lookback = html[max(0, m.start() - 1500):m.start()]
             header_text = _find_best_header(lookback)
                 
             # Deduplicate within this page context (avoid adding identical options)
@@ -342,7 +342,7 @@ def extract_download_options(detail_url):
             text_match = re.search(r'text=["\'“”]([^"\'“”]+)["\'“”]', shortcode_block, re.IGNORECASE)
             btn_text = text_match.group(1).strip() if text_match else "Download"
             
-            lookback = html[max(0, start_pos - 800):start_pos]
+            lookback = html[max(0, start_pos - 1500):start_pos]
             header_text = _find_best_header(lookback)
                 
             if not any(opt["url"] == href for opt in options):
@@ -365,7 +365,7 @@ def extract_download_options(detail_url):
                 continue
                 
             btn_text = "Download"
-            lookback = html[max(0, start_pos - 800):start_pos]
+            lookback = html[max(0, start_pos - 1500):start_pos]
             header_text = _find_best_header(lookback)
                 
             options.append({
