@@ -1296,6 +1296,46 @@ class APIRequestHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": str(e)}, 500)
             return
 
+        # 4b. IMDb Autocomplete Suggestion Proxy
+        if parsed.path == '/api/suggest':
+            qs = parse_qs(parsed.query)
+            query = qs.get("q", [""])[0].strip()
+            if not query:
+                self.send_json([])
+                return
+            
+            first_letter = query[0].lower() if query else 'a'
+            # Check if it's alphanumeric or space to prevent potential directory traversal or malicious injection
+            if not re.match(r'^[a-zA-Z0-9\s\-\:\.\'\,\!\&\(\)]+$', query):
+                self.send_json([])
+                return
+
+            safe_query = urllib.parse.quote(query.lower())
+            url = f"https://v3.sg.media-imdb.com/suggestion/{first_letter}/{safe_query}.json"
+            try:
+                response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=3)
+                if response.status_code == 200:
+                    data = response.json()
+                    suggestions = []
+                    for item in data.get('d', []):
+                        qid = item.get('qid', '')
+                        is_media = qid in ('movie', 'tvSeries', 'tvMiniSeries', 'tvSpecial', 'tvMovie', 'videoGame') or item.get('id', '').startswith('tt')
+                        if is_media and item.get('l'):
+                            suggestions.append({
+                                'id': item.get('id'),
+                                'title': item.get('l'),
+                                'year': item.get('y'),
+                                'stars': item.get('s'),
+                                'type': item.get('q', 'Movie'),
+                                'image': item.get('i', {}).get('imageUrl')
+                            })
+                    self.send_json(suggestions[:6])
+                    return
+            except Exception as e:
+                print(f"[!] Autocomplete proxy error: {e}", flush=True)
+            self.send_json([])
+            return
+
         # 5. Server-Sent Events (SSE) Search Card Streamer!
         if parsed.path == '/api/search/stream':
             qs = parse_qs(parsed.query)

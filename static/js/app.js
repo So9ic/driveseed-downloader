@@ -10,6 +10,29 @@
 
     // Startup Init
     window.addEventListener('DOMContentLoaded', () => {
+      // IMDb suggestion keydown listener for ghost text completion (Tab/ArrowRight)
+      const searchBox = document.getElementById('search-box');
+      if (searchBox) {
+        searchBox.addEventListener('keydown', (e) => {
+          if (e.key === 'Tab' || e.key === 'ArrowRight') {
+            const isAtEnd = searchBox.selectionStart === searchBox.value.length;
+            if (currentGhostText && isAtEnd) {
+              e.preventDefault();
+              searchBox.value += currentGhostText;
+              hideSuggestions();
+            }
+          }
+        });
+      }
+
+      // Close IMDb autocomplete dropdown when clicking outside
+      document.addEventListener('click', (e) => {
+        const wrap = document.querySelector('.search-input-wrap');
+        if (wrap && !wrap.contains(e.target)) {
+          hideSuggestions();
+        }
+      });
+
       // Start polling status & downloads
       pollStatus();
       pollDownloads();
@@ -315,12 +338,18 @@
       }
     }, true);
 
+    let suggestionDebounceTimer = null;
+    let currentSuggestions = [];
+    let activeSuggestionIndex = -1;
+    let currentGhostText = '';
+
     function clearSearch() {
       const searchBox = document.getElementById('search-box');
       if (searchBox) {
         searchBox.value = '';
         toggleClearButton();
         triggerSearch();
+        hideSuggestions();
       }
     }
 
@@ -339,14 +368,202 @@
     // Debounced Search triggers
     let searchDebounceTimer = null;
     function onSearchKeyup(e) {
-      toggleClearButton();
-      if (e.key === 'Enter') {
-        clearTimeout(searchDebounceTimer);
-        triggerSearch();
-      } else {
-        clearTimeout(searchDebounceTimer);
-        searchDebounceTimer = setTimeout(triggerSearch, 500);
+      const q = e.target.value;
+      
+      // Keyboard Navigation for Suggestions Dropdown
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (currentSuggestions.length > 0) {
+          activeSuggestionIndex = (activeSuggestionIndex + 1) % currentSuggestions.length;
+          highlightSuggestion();
+        }
+        return;
       }
+      
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (currentSuggestions.length > 0) {
+          activeSuggestionIndex = (activeSuggestionIndex - 1 + currentSuggestions.length) % currentSuggestions.length;
+          highlightSuggestion();
+        }
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        if (activeSuggestionIndex >= 0 && activeSuggestionIndex < currentSuggestions.length) {
+          selectSuggestion(activeSuggestionIndex);
+        } else {
+          clearTimeout(searchDebounceTimer);
+          triggerSearch();
+          hideSuggestions();
+        }
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        hideSuggestions();
+        return;
+      }
+
+      // Default autocomplete suggestion trigger
+      handleSuggestions(q);
+
+      toggleClearButton();
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(triggerSearch, 500);
+    }
+
+    function handleSuggestions(query) {
+      const ghostEl = document.getElementById('search-ghost');
+      const dropdownEl = document.getElementById('imdb-suggestions');
+      
+      if (!ghostEl || !dropdownEl) return;
+
+      if (query.length < 2) {
+        currentSuggestions = [];
+        activeSuggestionIndex = -1;
+        currentGhostText = '';
+        ghostEl.innerHTML = '';
+        dropdownEl.style.display = 'none';
+        dropdownEl.innerHTML = '';
+        return;
+      }
+
+      clearTimeout(suggestionDebounceTimer);
+      suggestionDebounceTimer = setTimeout(() => {
+        fetch(`/api/suggest?q=${encodeURIComponent(query)}`)
+          .then(res => res.json())
+          .then(data => {
+            currentSuggestions = data || [];
+            activeSuggestionIndex = -1;
+            renderSuggestionsDropdown();
+            
+            // Generate Ghost autocomplete text
+            if (currentSuggestions.length > 0) {
+              const firstSug = currentSuggestions[0].title;
+              if (firstSug.toLowerCase().startsWith(query.toLowerCase())) {
+                const completion = firstSug.slice(query.length);
+                currentGhostText = completion;
+                ghostEl.innerHTML = `<span style="color: transparent;">${escapeHtml(query)}</span><span class="search-ghost-text">${escapeHtml(completion)}</span>`;
+              } else {
+                currentGhostText = '';
+                ghostEl.innerHTML = '';
+              }
+            } else {
+              currentGhostText = '';
+              ghostEl.innerHTML = '';
+            }
+          })
+          .catch(() => {
+            currentSuggestions = [];
+            activeSuggestionIndex = -1;
+            currentGhostText = '';
+            ghostEl.innerHTML = '';
+            dropdownEl.style.display = 'none';
+          });
+      }, 150);
+    }
+
+    function renderSuggestionsDropdown() {
+      const dropdownEl = document.getElementById('imdb-suggestions');
+      if (!dropdownEl) return;
+
+      if (currentSuggestions.length === 0) {
+        dropdownEl.style.display = 'none';
+        dropdownEl.innerHTML = '';
+        return;
+      }
+
+      const html = currentSuggestions.map((sug, idx) => {
+        const posterUrl = sug.image || 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=300';
+        const typeBadge = sug.type ? `<span class="imdb-suggest-type">${sug.type}</span>` : '';
+        const yearInfo = sug.year ? `<span class="imdb-suggest-year">${sug.year}</span>` : '';
+        const starsText = sug.stars ? `<span class="imdb-suggest-stars">${escapeHtml(sug.stars)}</span>` : '';
+
+        return `
+          <div class="imdb-suggest-item" data-index="${idx}" onclick="selectSuggestion(${idx})">
+            <img class="imdb-suggest-poster" src="${posterUrl}" alt="${escapeHtml(sug.title)}" onerror="this.src='https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=300'">
+            <div class="imdb-suggest-info">
+              <div class="imdb-suggest-title">${escapeHtml(sug.title)}</div>
+              <div class="imdb-suggest-meta">
+                ${typeBadge}
+                ${yearInfo}
+                ${starsText}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      dropdownEl.innerHTML = html;
+      dropdownEl.style.display = 'flex';
+    }
+
+    function selectSuggestion(idx) {
+      const sug = currentSuggestions[idx];
+      if (!sug) return;
+
+      const searchBox = document.getElementById('search-box');
+      if (searchBox) {
+        searchBox.value = sug.title;
+      }
+      
+      hideSuggestions();
+      triggerSearch();
+    }
+
+    function hideSuggestions() {
+      const ghostEl = document.getElementById('search-ghost');
+      const dropdownEl = document.getElementById('imdb-suggestions');
+      
+      if (ghostEl) ghostEl.innerHTML = '';
+      if (dropdownEl) {
+        dropdownEl.style.display = 'none';
+        dropdownEl.innerHTML = '';
+      }
+      currentGhostText = '';
+      currentSuggestions = [];
+      activeSuggestionIndex = -1;
+    }
+
+    function highlightSuggestion() {
+      const dropdownEl = document.getElementById('imdb-suggestions');
+      if (!dropdownEl) return;
+
+      const items = dropdownEl.querySelectorAll('.imdb-suggest-item');
+      items.forEach((item, idx) => {
+        if (idx === activeSuggestionIndex) {
+          item.classList.add('keyboard-selected');
+          item.scrollIntoView({ block: 'nearest' });
+        } else {
+          item.classList.remove('keyboard-selected');
+        }
+      });
+      
+      const ghostEl = document.getElementById('search-ghost');
+      const searchBox = document.getElementById('search-box');
+      if (ghostEl && searchBox) {
+        const query = searchBox.value;
+        const currentSug = currentSuggestions[activeSuggestionIndex]?.title || currentSuggestions[0]?.title || '';
+        if (currentSug && currentSug.toLowerCase().startsWith(query.toLowerCase())) {
+          const completion = currentSug.slice(query.length);
+          currentGhostText = completion;
+          ghostEl.innerHTML = `<span style="color: transparent;">${escapeHtml(query)}</span><span class="search-ghost-text">${escapeHtml(completion)}</span>`;
+        } else {
+          currentGhostText = '';
+          ghostEl.innerHTML = '';
+        }
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
     }
 
     function triggerSearch() {
