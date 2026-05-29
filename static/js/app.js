@@ -803,12 +803,13 @@
             return a[0].localeCompare(b[0]);
           });
 
-          // 4. Build accordion HTML structure (all kept COLLAPSED initially)
+          // 4. Build accordion HTML structure (auto-expanded if there is only 1 item)
           let accordionHtml = `<div class="accordion-list">`;
           
           entries.forEach(([seasonName, items], index) => {
-            const activeClass = ''; // Inactive/collapsed by default
-            const styleHeight = 'style="max-height: 0;"';
+            const isSingleItem = entries.length === 1;
+            const activeClass = isSingleItem ? 'active' : '';
+            const styleHeight = isSingleItem ? 'style="max-height: none;"' : 'style="max-height: 0;"';
 
             // Render options inside this Season group
             const cardsInnerHtml = items.map(item => {
