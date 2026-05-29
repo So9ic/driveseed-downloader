@@ -1028,12 +1028,6 @@
                       }
                       return '';
                     })()}
-                    ${mediaInfo.audios.map(aud => `
-                      <span class="pill-size" style="background: rgba(245, 158, 11, 0.1); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.25); margin-left: 8px;">🔊 ${aud}</span>
-                    `).join('')}
-                    ${mediaInfo.subs.map(sub => `
-                      <span class="pill-size" style="background: rgba(59, 130, 246, 0.1); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.25); margin-left: 8px; font-weight: 500;">📝 ${sub}</span>
-                    `).join('')}
                     ${parsed.tags.map(tag => {
                       const t = tag.toLowerCase();
                       if (t.includes('10bit') || t.includes('x264') || t.includes('x265') || t.includes('hevc')) {
