@@ -1422,20 +1422,36 @@ class APIRequestHandler(BaseHTTPRequestHandler):
                 response = SESSION.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=3)
                 if response.status_code == 200:
                     data = response.json()
-                    suggestions = []
+                    media_suggestions = []
+                    person_suggestions = []
                     for item in data.get('d', []):
+                        if not item.get('l'):
+                            continue
                         qid = item.get('qid', '')
-                        is_media = qid in ('movie', 'tvSeries', 'tvMiniSeries', 'tvSpecial', 'tvMovie', 'videoGame') or item.get('id', '').startswith('tt')
-                        if is_media and item.get('l'):
-                            suggestions.append({
-                                'id': item.get('id'),
+                        item_id = item.get('id', '')
+                        is_media = qid in ('movie', 'tvSeries', 'tvMiniSeries', 'tvSpecial', 'tvMovie', 'videoGame') or item_id.startswith('tt')
+                        if is_media:
+                            media_suggestions.append({
+                                'id': item_id,
                                 'title': item.get('l'),
                                 'year': item.get('y'),
                                 'stars': item.get('s'),
                                 'type': item.get('q', 'Movie'),
                                 'image': item.get('i', {}).get('imageUrl')
                             })
-                    res_payload = suggestions[:6]
+                        elif item_id.startswith('nm'):
+                            # Person/celebrity — useful fallback when no titles match
+                            person_suggestions.append({
+                                'id': item_id,
+                                'title': item.get('l'),
+                                'year': None,
+                                'stars': item.get('s', ''),
+                                'type': 'Celebrity',
+                                'image': item.get('i', {}).get('imageUrl')
+                            })
+                    # Prefer media results; fall back to people if no media found
+                    suggestions = media_suggestions[:6] if media_suggestions else person_suggestions[:6]
+                    res_payload = suggestions
                     # LRU eviction: drop oldest entries instead of nuking entire cache
                     while len(IMDB_SUGGEST_CACHE) >= IMDB_SUGGEST_CACHE_MAX:
                         IMDB_SUGGEST_CACHE.popitem(last=False)
