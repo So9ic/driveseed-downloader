@@ -193,7 +193,7 @@
           return `
             <div class="movie-card static-overlay" data-category="${movie.category}" onclick="event.stopPropagation(); handleShowcaseCardClick(this, '${encodeURIComponent(JSON.stringify(movie))}')">
               <div class="poster-wrap">
-                ${movie.thumbnail ? `<img src="/api/thumbnail?url=${encodeURIComponent(movie.thumbnail)}" class="poster-img" loading="lazy">` : `<div class="poster-placeholder"><i class="fa fa-film"></i></div>`}
+                ${movie.thumbnail ? `<img src="/api/thumbnail?url=${encodeURIComponent(movie.thumbnail)}" class="poster-img" loading="eager">` : `<div class="poster-placeholder"><i class="fa fa-film"></i></div>`}
                 <div class="poster-hover-overlay">
                   <div class="hover-overlay-content">
                     <span class="hover-overlay-main-title">${mainTitle}</span>
