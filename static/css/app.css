@@ -1969,30 +1969,17 @@
 
     .credits-footer {
       text-align: center;
-      padding: 16px 0 28px 0;
-      font-family: 'Inter', sans-serif;
-      font-size: 11px;
-      width: 100%;
-    }
-
-    .credits-footer p {
       margin: 0;
       margin-top: 25px;
+      padding-bottom: 28px;
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 400;
       color: #d6d6d6;
-      font-weight: 300;
-      letter-spacing: 0.5px;
-    }
-
-    .credits-footer a.so9ic-footer {
-      color: #ffffff;
-      text-decoration: none;
-      font-weight: 500;
-      transition: color 0.15s ease;
-      display: inline;
-    }
-
-    .credits-footer a.so9ic-footer:hover {
-      color: #3b82f6;
-      text-decoration: underline;
+      opacity: 0.65;
+      letter-spacing: 0.3px;
+      pointer-events: none;
+      user-select: none;
+      width: 100%;
     }
 
