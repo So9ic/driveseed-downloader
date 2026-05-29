@@ -222,6 +222,7 @@
       color: var(--text-dim);
       pointer-events: none;
       transition: color 0.3s;
+      z-index: 2;
     }
 
     .search-input {
@@ -265,6 +266,7 @@
       padding: 4px;
       border-radius: 50%;
       transition: color 0.2s, background-color 0.2s;
+      z-index: 2;
     }
 
     .clear-search-btn:hover {
