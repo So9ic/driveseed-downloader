@@ -1287,7 +1287,11 @@ class APIRequestHandler(BaseHTTPRequestHandler):
             try:
                 # Scrape download option buttons using movie_search library
                 options = extract_download_options(target_url)
-                self.send_json({"options": options})
+                metadata = getattr(options, 'metadata', {})
+                self.send_json({
+                    "options": options,
+                    "metadata": metadata
+                })
             except Exception as e:
                 self.send_json({"error": str(e)}, 500)
             return

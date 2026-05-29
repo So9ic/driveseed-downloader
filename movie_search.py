@@ -226,6 +226,20 @@ def search_movies(query, categories=None, on_result_callback=None):
     return results
 
 
+class OptionsList(list):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.metadata = {}
+
+
+def clean_html_to_text(html_content):
+    # Replace block-level tags and line breaks with newlines
+    text = re.sub(r'<(p|br|li|tr|div|h[1-6]|ul|ol)[^>]*>', '\n', html_content, flags=re.IGNORECASE)
+    # Replace all other HTML tags with a single space
+    text = re.sub(r'<[^>]+>', ' ', text)
+    return text
+
+
 def extract_download_options(detail_url):
     """
     Fetch a movie detail page and extract clean download links mapped to their seasons/qualities.
@@ -233,11 +247,38 @@ def extract_download_options(detail_url):
     """
     import html as html_parser
     print(f"[*] Extracting download options from: {detail_url}")
-    options = []
+    options = OptionsList()
     try:
         raw_html = fetch_with_fallback(detail_url)
         # Decode HTML entities (e.g. curly quotes, double primes like &#8221; and &#8243;)
         html = html_parser.unescape(raw_html)
+        
+        # Extract page-level metadata (Movie/Anime Info)
+        try:
+            meta = {}
+            clean_text = clean_html_to_text(raw_html)
+            clean_text = html_parser.unescape(clean_text)
+            lines = [line.strip() for line in clean_text.split('\n') if line.strip()]
+            for i, line in enumerate(lines):
+                if re.search(r'\b(Movie|Anime|Series|Show)\s+Info\b', line, re.IGNORECASE):
+                    for j in range(i + 1, min(i + 15, len(lines))):
+                        sub_line = lines[j]
+                        if ':' in sub_line:
+                            parts = sub_line.split(':', 1)
+                            key = parts[0].strip().lower().replace(' ', '_')
+                            val = parts[1].strip()
+                            if key and val and len(key) < 25 and len(val) < 200:
+                                if 'info' in key or 'download' in key:
+                                    break
+                                meta[key] = val
+                        else:
+                            if meta and not re.search(r'\b(full_name|language|release|year|size|quality|format|director|writer|star|subtitles|status|episodes|aired|premiered|studio|genre|demographic|duration|rating)\b', sub_line, re.IGNORECASE):
+                                break
+                    if meta:
+                        break
+            options.metadata = meta
+        except Exception as meta_err:
+            print(f"[-] Meta parsing failed: {meta_err}")
         
         def _find_best_header(match_start):
             # 1. Search for potential inline headers or label elements (h1-h6, strong, b, p, span) in a tight 800-char lookback
