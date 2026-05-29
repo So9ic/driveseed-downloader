@@ -292,6 +292,11 @@
         }
 
         function onStart(clientX, clientY) {
+          // Clear any active mobile tap highlights on swipe/drag start
+          if (typeof resetActiveTappedCard === 'function') {
+            resetActiveTappedCard();
+          }
+
           isDragging = true;
           hasMoved = false;
           isScrolling = false;
@@ -414,7 +419,8 @@
             }
 
             // Normal scroll behavior when not hovered/paused
-            const isHovered = track.closest('.marquee-row-wrapper').matches(':hover');
+            const isHoverSupported = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+            const isHovered = isHoverSupported && track.closest('.marquee-row-wrapper').matches(':hover');
             const isPaused = track.classList.contains('paused');
             
             if (!isHovered && !isPaused) {
