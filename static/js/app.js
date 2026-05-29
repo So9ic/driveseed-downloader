@@ -244,7 +244,14 @@
       track.classList.toggle('paused');
     }
 
+    // Registry of active marquee cleanup functions — cancelled before re-init
+    let _marqueeCleanups = [];
+
     function initInteractiveMarquees() {
+      // Kill all previous marquee loops + observers before creating new ones
+      _marqueeCleanups.forEach(fn => fn());
+      _marqueeCleanups = [];
+
       // Cache hover-device detection once (doesn't change at runtime)
       const isHoverDevice = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
@@ -265,7 +272,8 @@
         let isDragging = false;
         let hasMoved = false;
         let isScrolling = false;
-        let trackPaused = false; // fast boolean mirror of .paused class
+        let trackPaused = false;
+        let alive = true; // kill-switch for the tick loop
         
         let startX = 0;
         let startY = 0;
@@ -281,6 +289,7 @@
         // Cache wrap distance — recalculate only on resize, not every frame
         // Detects actual CSS gap dynamically instead of hardcoding
         function measureWrapDist() {
+          if (!track.isConnected) return;
           const group = track.querySelector('.marquee-group');
           if (!group) { cachedWrapDist = 0; return; }
           const gap = parseFloat(getComputedStyle(track).gap) || 24;
@@ -411,6 +420,9 @@
 
         // Smooth Physics Autoplay Tick Loop
         function tick() {
+          // Self-terminate if killed or DOM node was destroyed
+          if (!alive || !track.isConnected) return;
+
           if (!isDragging) {
             // Apply momentum deceleration
             if (Math.abs(velocity) > 0.1) {
@@ -435,6 +447,13 @@
         }
 
         tick();
+
+        // Register cleanup for this track
+        _marqueeCleanups.push(() => {
+          alive = false;
+          pauseObserver.disconnect();
+          window.removeEventListener('resize', measureWrapDist);
+        });
       });
     }
 
