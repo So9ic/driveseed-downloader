@@ -1097,11 +1097,21 @@ class APIRequestHandler(BaseHTTPRequestHandler):
         if parsed.path == '/' or parsed.path == '/index.html':
             try:
                 with open('index.html', 'rb') as f:
-                    content = f.read()
+                    content = f.read().decode('utf-8')
+                
+                # Dynamic cache busting based on modification timestamps
+                css_time = int(os.path.getmtime('static/css/app.css')) if os.path.exists('static/css/app.css') else 1
+                js_time = int(os.path.getmtime('static/js/app.js')) if os.path.exists('static/js/app.js') else 1
+                
+                content = content.replace('/static/css/app.css', f'/static/css/app.css?v={css_time}')
+                content = content.replace('/static/js/app.js', f'/static/js/app.js?v={js_time}')
+                
+                content_bytes = content.encode('utf-8')
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/html')
+                self.send_header('Content-Length', str(len(content_bytes)))
                 self.end_headers()
-                self.wfile.write(content)
+                self.wfile.write(content_bytes)
             except Exception as e:
                 self.send_response(500)
                 self.end_headers()
