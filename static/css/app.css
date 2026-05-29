@@ -1972,12 +1972,27 @@
       padding: 16px 0 28px 0;
       font-family: 'Inter', sans-serif;
       font-size: 11px;
-      font-weight: 300;
-      color: rgba(255, 255, 255, 0.28);
-      letter-spacing: 1.2px;
-      text-transform: uppercase;
-      pointer-events: none;
-      user-select: none;
       width: 100%;
+    }
+
+    .credits-footer p {
+      margin: 0;
+      margin-top: 25px;
+      color: #d6d6d6;
+      font-weight: 300;
+      letter-spacing: 0.5px;
+    }
+
+    .credits-footer a.so9ic-footer {
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.15s ease;
+      display: inline;
+    }
+
+    .credits-footer a.so9ic-footer:hover {
+      color: #3b82f6;
+      text-decoration: underline;
     }
 
