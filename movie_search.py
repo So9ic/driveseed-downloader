@@ -239,9 +239,10 @@ def extract_download_options(detail_url):
         # Decode HTML entities (e.g. curly quotes, double primes like &#8221; and &#8243;)
         html = html_parser.unescape(raw_html)
         
-        def _find_best_header(lookback):
-            # 1. Search for potential inline headers or label elements (h1-h6, strong, b, p, span)
-            matches = re.findall(r'<(h[1-6]|strong|b|p|span)[^>]*>(.*?)</\1>', lookback, re.IGNORECASE | re.DOTALL)
+        def _find_best_header(match_start):
+            # 1. Search for potential inline headers or label elements (h1-h6, strong, b, p, span) in a tight 800-char lookback
+            lookback_inline = html[max(0, match_start - 800):match_start]
+            matches = re.findall(r'<(h[1-6]|strong|b|p|span)[^>]*>(.*?)</\1>', lookback_inline, re.IGNORECASE | re.DOTALL)
             
             # Find the closest inline quality label (closest to button)
             quality_label = ""
@@ -264,29 +265,40 @@ def extract_download_options(detail_url):
                     quality_label = clean_text
                     break
             
-            # Find the closest parent heading h1-h6 in the lookback
-            h_matches = re.findall(r'<h[1-6][^>]*>(.*?)</h[1-6]>', lookback, re.IGNORECASE | re.DOTALL)
+            # 2. Find the closest preceding parent heading tag in the entire document preceding the match
+            html_before = html[:match_start]
+            h_matches = list(re.finditer(r'<h[1-6][^>]*>(.*?)</h[1-6]>', html_before, re.IGNORECASE | re.DOTALL))
+            
             heading_label = ""
             if h_matches:
-                clean_text = re.sub(r'<[^>]+>', '', h_matches[-1]).strip()
-                heading_label = re.sub(r'\s+', ' ', clean_text)
+                closest_h = h_matches[-1]
                 
-                # Check if this heading is essentially just a quality/resolution label (e.g. "720p x265")
-                hl_lower = heading_label.lower()
-                is_just_quality = any(r in hl_lower for r in ['480p', '720p', '1080p', '2160p', '4k', '8k'])
-                
-                if is_just_quality and len(h_matches) > 1:
-                    # Look at the previous heading to see if it is a structural header
-                    prev_text = re.sub(r'<[^>]+>', '', h_matches[-2]).strip()
-                    prev_label = re.sub(r'\s+', ' ', prev_text)
-                    prev_lower = prev_label.lower()
+                # Sanity check: parent heading shouldn't be miles away (max 4000 characters)
+                if match_start - closest_h.end() < 4000:
+                    clean_text = re.sub(r'<[^>]+>', '', closest_h.group(1)).strip()
+                    heading_label = re.sub(r'\s+', ' ', clean_text)
                     
-                    # If the previous heading contains structural keywords (season, episode, special, bonus, etc.)
-                    structural_keywords = ['season', 'episode', 'special', 'bonus', 'pack', 'batch', 'ova', 'movie']
-                    if any(k in prev_lower for k in structural_keywords):
-                        heading_label = f"{prev_label} - {heading_label}"
+                    # Check if this heading is essentially just a quality/resolution label (e.g. "720p x265")
+                    hl_lower = heading_label.lower()
+                    structural_words = ['season', 'episode', 'ep', 'complete', 'batch', 'ova', 'movie']
+                    has_structural = any(w in hl_lower for w in structural_words)
+                    has_res_indicator = any(r in hl_lower for r in ['480p', '720p', '1080p', '2160p', '4k', '8k'])
+                    
+                    is_just_quality = has_res_indicator and not has_structural and len(heading_label) < 25
+                    
+                    if is_just_quality and len(h_matches) > 1:
+                        prev_h = h_matches[-2]
+                        if match_start - prev_h.end() < 4000:
+                            prev_text = re.sub(r'<[^>]+>', '', prev_h.group(1)).strip()
+                            prev_label = re.sub(r'\s+', ' ', prev_text)
+                            prev_lower = prev_label.lower()
+                            
+                            # If the previous heading contains structural keywords (season, episode, special, bonus, etc.)
+                            structural_keywords = ['season', 'episode', 'special', 'bonus', 'pack', 'batch', 'ova', 'movie']
+                            if any(k in prev_lower for k in structural_keywords):
+                                heading_label = f"{prev_label} - {heading_label}"
             
-            # Combine them if appropriate
+            # 3. Combine them if appropriate
             if heading_label and quality_label:
                 h_lower = heading_label.lower()
                 q_lower = quality_label.lower()
@@ -315,9 +327,7 @@ def extract_download_options(detail_url):
             # Remove inner tags from button label (e.g. <span class='mb-text'>)
             btn_text = re.sub(r'<[^>]+>', '', m.group(2)).strip()
             
-            # Traversal backward up to 1500 characters to find the nearest quality or description header
-            lookback = html[max(0, m.start() - 1500):m.start()]
-            header_text = _find_best_header(lookback)
+            header_text = _find_best_header(m.start())
                 
             # Deduplicate within this page context (avoid adding identical options)
             if not any(opt["url"] == href for opt in options):
@@ -342,8 +352,7 @@ def extract_download_options(detail_url):
             text_match = re.search(r'text=["\'“”]([^"\'“”]+)["\'“”]', shortcode_block, re.IGNORECASE)
             btn_text = text_match.group(1).strip() if text_match else "Download"
             
-            lookback = html[max(0, start_pos - 1500):start_pos]
-            header_text = _find_best_header(lookback)
+            header_text = _find_best_header(start_pos)
                 
             if not any(opt["url"] == href for opt in options):
                 options.append({
@@ -365,8 +374,7 @@ def extract_download_options(detail_url):
                 continue
                 
             btn_text = "Download"
-            lookback = html[max(0, start_pos - 1500):start_pos]
-            header_text = _find_best_header(lookback)
+            header_text = _find_best_header(start_pos)
                 
             options.append({
                 "quality": header_text,
