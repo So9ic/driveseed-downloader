@@ -245,6 +245,9 @@
     }
 
     function initInteractiveMarquees() {
+      // Cache hover-device detection once (doesn't change at runtime)
+      const isHoverDevice = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
       const tracks = document.querySelectorAll('.marquee-track');
       tracks.forEach(track => {
         // Prevent duplicate initialization
@@ -253,6 +256,7 @@
 
         const isLeft = track.classList.contains('left');
         const baseSpeed = isLeft ? -0.8 : 0.8;
+        const TRACK_GAP = 24; // matches CSS .marquee-track { gap: 24px }
         
         let x = 0;
         let velocity = 0;
@@ -265,25 +269,25 @@
         let startTranslate = 0;
         let lastX = 0;
         let lastTime = 0;
-        let animationFrameId = null;
+        let cachedWrapDist = 0;
 
         // Force disable keyframe animations so they don't fight custom translate3d
         track.style.animation = 'none';
         track.style.transition = 'none';
 
-        function getGroupWidth() {
+        // Cache wrap distance — recalculate only on resize, not every frame
+        function measureWrapDist() {
           const group = track.querySelector('.marquee-group');
-          return group ? group.offsetWidth : 0;
+          cachedWrapDist = group ? group.offsetWidth + TRACK_GAP : 0;
         }
+        measureWrapDist();
+        window.addEventListener('resize', measureWrapDist);
 
-        function wrapOffset(val, groupWidth) {
-          if (groupWidth <= 0) return val;
-          while (val <= -groupWidth) {
-            val += groupWidth;
-          }
-          while (val > 0) {
-            val -= groupWidth;
-          }
+        function wrapOffset(val) {
+          if (cachedWrapDist <= 0) return val;
+          // Modulo-style wrapping (no while-loops, handles any offset)
+          val = val % cachedWrapDist;
+          if (val > 0) val -= cachedWrapDist;
           return val;
         }
 
@@ -306,7 +310,6 @@
           startTranslate = x;
           lastX = clientX;
           lastTime = performance.now();
-          track.classList.add('paused');
           
           window.addEventListener('mousemove', onMouseMoveWindow);
           window.addEventListener('mouseup', onMouseUpWindow);
@@ -322,7 +325,6 @@
             if (dy > dx && dy > 10) {
               isScrolling = true;
               isDragging = false;
-              track.classList.remove('paused');
               return;
             }
           }
@@ -334,22 +336,20 @@
             e.preventDefault();
           }
 
-          const groupWidth = getGroupWidth();
           const dx = clientX - startX;
           
-          if (Math.abs(dx) > 10) {
+          if (Math.abs(dx) > 5) {
             hasMoved = true;
           }
           
-          x = wrapOffset(startTranslate + dx, groupWidth);
+          x = wrapOffset(startTranslate + dx);
           
           const now = performance.now();
           const dt = now - lastTime;
           const dist = clientX - lastX;
           if (dt > 0) {
-            const targetVel = (dist / dt) * 16.666;
-            // Interpolate dynamic speed smoothly
-            velocity = velocity * 0.7 + targetVel * 0.3;
+            const instantVel = (dist / dt) * 16.666;
+            velocity = velocity * 0.6 + instantVel * 0.4;
           }
           
           lastX = clientX;
@@ -360,15 +360,15 @@
         function onEnd() {
           if (!isDragging) return;
           isDragging = false;
-          track.classList.remove('paused');
           
-          // Momentarily disable pointer events to drop any synthetic click events spawned by drag release
+          // Flag to prevent card click from firing after a real drag
           if (hasMoved) {
-            track.style.pointerEvents = 'none';
-            setTimeout(() => {
-              track.style.pointerEvents = 'auto';
-            }, 50);
+            window._marqueeJustDragged = true;
+            setTimeout(() => { window._marqueeJustDragged = false; }, 100);
           }
+          
+          window.removeEventListener('mousemove', onMouseMoveWindow);
+          window.removeEventListener('mouseup', onMouseUpWindow);
         }
 
         function onMouseMoveWindow(e) {
@@ -377,13 +377,11 @@
 
         function onMouseUpWindow() {
           onEnd();
-          window.removeEventListener('mousemove', onMouseMoveWindow);
-          window.removeEventListener('mouseup', onMouseUpWindow);
         }
 
         // Mouse Event Listeners
         track.addEventListener('mousedown', (e) => {
-          if (e.button !== 0) return; // Only left click drags
+          if (e.button !== 0) return;
           onStart(e.clientX, e.clientY);
         });
 
@@ -408,30 +406,27 @@
         // Smooth Physics Autoplay Tick Loop
         function tick() {
           if (!isDragging) {
-            const groupWidth = getGroupWidth();
-            
-            // Decelerate momentum speed
-            if (Math.abs(velocity) > 0.05) {
+            // Apply momentum deceleration
+            if (Math.abs(velocity) > 0.1) {
               x += velocity;
-              velocity *= 0.95; // Friction constant
+              velocity *= 0.94;
             } else {
               velocity = 0;
             }
 
-            // Normal scroll behavior when not hovered/paused
-            const isHoverSupported = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-            const isHovered = isHoverSupported && track.closest('.marquee-row-wrapper').matches(':hover');
+            // Hover-pause only on devices with real mouse hover
+            const isHovered = isHoverDevice && track.closest('.marquee-row-wrapper').matches(':hover');
             const isPaused = track.classList.contains('paused');
             
             if (!isHovered && !isPaused) {
               x += baseSpeed;
             }
             
-            x = wrapOffset(x, groupWidth);
+            x = wrapOffset(x);
             updateTransform();
           }
           
-          animationFrameId = requestAnimationFrame(tick);
+          requestAnimationFrame(tick);
         }
 
         tick();
@@ -499,6 +494,9 @@
     let activeTappedCard = null;
 
     function handleShowcaseCardClick(cardElement, movieJsonString) {
+      // Ignore clicks that are actually the end of a drag/swipe gesture
+      if (window._marqueeJustDragged) return;
+
       // 1. Desktop view: directly view details
       if (window.innerWidth > 768) {
         viewDetails(movieJsonString);
