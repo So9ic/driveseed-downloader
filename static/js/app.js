@@ -603,6 +603,102 @@
       };
     }
 
+    function getShortLang(langName) {
+      const lower = langName.toLowerCase().trim();
+      if (lower.includes('hindi') || lower === 'hin') return 'Hin';
+      if (lower.includes('english') || lower === 'eng') return 'Eng';
+      if (lower.includes('japanese') || lower === 'jap') return 'Jap';
+      if (lower.includes('tamil') || lower === 'tam') return 'Tam';
+      if (lower.includes('telugu') || lower === 'tel') return 'Tel';
+      if (lower.includes('malayalam') || lower === 'mal') return 'Mal';
+      if (lower.includes('kannada') || lower === 'kan') return 'Kan';
+      if (lower.includes('bengali') || lower === 'ben') return 'Ben';
+      if (lower.includes('marathi') || lower === 'mar') return 'Mar';
+      if (lower.includes('punjabi') || lower === 'pun') return 'Pun';
+      if (lower.includes('chinese') || lower === 'chi') return 'Chi';
+      if (lower.includes('korean') || lower === 'kor') return 'Kor';
+      if (lower.includes('spanish') || lower === 'spa') return 'Spa';
+      if (lower.includes('french') || lower === 'fre') return 'Fre';
+      if (lower.includes('dual') || lower.includes('multi')) return 'Multi';
+      return langName.slice(0, 3).replace(/^\w/, c => c.toUpperCase());
+    }
+
+    function parseLanguagesAndSubs(qualityTitle, metadata) {
+      const audios = new Set();
+      const subs = new Set();
+
+      const commonLangs = [
+        'hindi', 'english', 'japanese', 'tamil', 'telugu', 'malayalam',
+        'kannada', 'bengali', 'marathi', 'punjabi', 'chinese', 'korean',
+        'spanish', 'french'
+      ];
+
+      // 1. Scan metadata language & subtitles
+      if (metadata) {
+        if (metadata.language) {
+          const mLang = metadata.language.toLowerCase();
+          commonLangs.forEach(lang => {
+            if (mLang.includes(lang)) {
+              audios.add(getShortLang(lang));
+            }
+          });
+          if (mLang.includes('dual') || mLang.includes('multi')) {
+            if (audios.size === 0) audios.add('Multi');
+          }
+        }
+        
+        // Subtitles from metadata
+        const mSub = (metadata.subtitles || metadata.subtitle || '').toLowerCase();
+        if (mSub) {
+          if (mSub.includes('yes') || mSub.includes('english') || mSub.includes('eng')) {
+            subs.add('Eng');
+          }
+          commonLangs.forEach(lang => {
+            if (mSub.includes(lang) && lang !== 'english') {
+              subs.add(getShortLang(lang));
+            }
+          });
+        }
+      }
+
+      // 2. Scan qualityTitle for Audios
+      const titleLower = qualityTitle.toLowerCase();
+      commonLangs.forEach(lang => {
+        if (titleLower.includes(lang)) {
+          audios.add(getShortLang(lang));
+        }
+      });
+      if (titleLower.includes('dual audio') || titleLower.includes('multi audio') || titleLower.includes('multi-audio')) {
+        if (audios.size === 0) audios.add('Multi');
+      }
+
+      // 3. Scan qualityTitle for Subtitles (e.g. esub, msub, hsub, english subtitles, esubs, msubs)
+      if (titleLower.includes('esub') || titleLower.includes('esubs') || titleLower.includes('english sub')) {
+        subs.add('Eng');
+      }
+      if (titleLower.includes('msub') || titleLower.includes('msubs') || titleLower.includes('multi sub') || titleLower.includes('multi-sub')) {
+        subs.add('Multi');
+      }
+      if (titleLower.includes('hsub') || titleLower.includes('hsubs') || titleLower.includes('hindi sub')) {
+        subs.add('Hin');
+      }
+
+      // Fallbacks if nothing is matched but there is generic info
+      if (audios.size === 0) {
+        const parsed = parseQualityTitle(qualityTitle, metadata);
+        if (parsed.lang) {
+          audios.add(getShortLang(parsed.lang));
+        } else {
+          audios.add('Hin'); // Default fallback
+        }
+      }
+
+      return {
+        audios: Array.from(audios),
+        subs: Array.from(subs)
+      };
+    }
+
     function getResolutionClass(res) {
       res = (res || '').toLowerCase();
       if (res.includes('480')) return 'res-480p';
@@ -845,6 +941,9 @@
               const parsed = item.parsed;
               const theme = getQualityTheme(parsed.resolution, item.quality);
               
+              // Get clean parsed audios and subtitles
+              const mediaInfo = parseLanguagesAndSubs(item.quality, data.metadata);
+
               // Build buttons row (side-by-side)
               const buttonsHtml = item.opts.map(opt => {
                 let icon = '⚡';
@@ -929,9 +1028,15 @@
                       }
                       return '';
                     })()}
+                    ${mediaInfo.audios.map(aud => `
+                      <span class="pill-size" style="background: rgba(245, 158, 11, 0.1); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.25); margin-left: 8px;">🔊 ${aud}</span>
+                    `).join('')}
+                    ${mediaInfo.subs.map(sub => `
+                      <span class="pill-size" style="background: rgba(59, 130, 246, 0.1); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.25); margin-left: 8px; font-weight: 500;">📝 ${sub}</span>
+                    `).join('')}
                     ${parsed.tags.map(tag => {
                       const t = tag.toLowerCase();
-                      if (t.includes('10bit') || t.includes('x264') || t.includes('x265') || t.includes('hevc') || t.includes('colour') || t.includes('b&w') || t.includes('bw') || t.includes('msub')) {
+                      if (t.includes('10bit') || t.includes('x264') || t.includes('x265') || t.includes('hevc')) {
                         let badgeStyle = 'background: rgba(255, 255, 255, 0.05); color: var(--text-sub); border: 1px solid rgba(255, 255, 255, 0.1); margin-left: 8px;';
                         if (t.includes('10bit')) {
                           badgeStyle = 'background: rgba(16, 185, 129, 0.1); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25); margin-left: 8px;';
@@ -957,24 +1062,21 @@
 
             const countText = items.length === 1 ? '1 Quality Option' : `${items.length} Quality Options`;
 
-            // Compute per-season language and tag pills
-            const seasonLangs = new Set();
-            const seasonTags = new Set();
+            // Compute per-season language and subtitle pills
+            const seasonAudios = new Set();
+            const seasonSubs = new Set();
             items.forEach(item => {
-              if (item.parsed.lang) seasonLangs.add(item.parsed.lang);
-              item.parsed.tags.forEach(tag => {
-                const t = tag.toLowerCase();
-                if (t.includes('sub') || t.includes('audio') || t === 'dual' || t.includes('multi')) {
-                  seasonTags.add(tag);
-                }
-              });
+              const mediaInfo = parseLanguagesAndSubs(item.quality, data.metadata);
+              mediaInfo.audios.forEach(aud => seasonAudios.add(aud));
+              mediaInfo.subs.forEach(sub => seasonSubs.add(sub));
             });
+
             let seasonPillsHtml = '';
-            seasonLangs.forEach(lang => {
-              seasonPillsHtml += `<span class="pill-badge pill-lang" style="font-size: 9.5px; padding: 3px 10px; margin-left: 6px;">🔊 ${lang}</span>`;
+            seasonAudios.forEach(aud => {
+              seasonPillsHtml += `<span class="pill-badge pill-lang" style="font-size: 9.5px; padding: 3px 10px; margin-left: 6px;">🔊 ${aud}</span>`;
             });
-            seasonTags.forEach(tag => {
-              seasonPillsHtml += `<span class="pill-badge pill-tag" style="font-size: 9.5px; padding: 3px 10px; margin-left: 4px;">🏷️ ${tag}</span>`;
+            seasonSubs.forEach(sub => {
+              seasonPillsHtml += `<span class="pill-badge pill-tag" style="font-size: 9.5px; padding: 3px 10px; margin-left: 4px; background: rgba(59, 130, 246, 0.1); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.25);">📝 ${sub}</span>`;
             });
 
             accordionHtml += `
