@@ -1460,6 +1460,14 @@ class APIRequestHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
 
+            # Dynamically optimize and compress IMDb/Amazon S3 images
+            if "m.media-amazon.com/images/M/" in img_url:
+                # Replace full-size suffix after base hash with optimized thumbnail rule: width=100px, quality=75%
+                match = re.match(r'(.+?)(?:@)?\._V1_.*\.jpg$', img_url)
+                if match:
+                    img_url = f"{match.group(1)}@._V1_QL75_UX100_.jpg"
+
+
             # Serve from in-memory cache if available
             if img_url in IMG_PROXY_CACHE:
                 cached = IMG_PROXY_CACHE[img_url]
