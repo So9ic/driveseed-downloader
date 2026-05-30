@@ -682,8 +682,15 @@
     function onSearchFocus(e) {
       const q = e.target.value;
       if (q.trim().length >= 2) {
-        // Bring back suggestions dropdown immediately on input focus if there is a query
-        handleSuggestions(q);
+        const cacheKey = q.trim().toLowerCase();
+        // If we have cached results from before, render them instantly without a network call
+        if (suggestionsClientCache[cacheKey] && suggestionsClientCache[cacheKey].length > 0) {
+          currentSuggestions = suggestionsClientCache[cacheKey];
+          activeSuggestionIndex = -1;
+          renderSuggestionsDropdown();
+        } else {
+          handleSuggestions(q);
+        }
       }
     }
 
@@ -750,6 +757,9 @@
         activeSuggestController = null;
       }
 
+      // Show premium skeleton loader instantly while waiting for network
+      showSuggestionSkeleton(dropdownEl);
+
       // Fast 60ms debounce — server-side cache makes responses near-instant
       clearTimeout(suggestionDebounceTimer);
       suggestionDebounceTimer = setTimeout(() => {
@@ -780,6 +790,24 @@
       }, 60);
     }
 
+    function showSuggestionSkeleton(dropdownEl) {
+      const skeletonCount = 4;
+      let html = '';
+      for (let i = 0; i < skeletonCount; i++) {
+        html += `
+          <div class="imdb-suggest-item skeleton-item">
+            <div class="skeleton-poster skeleton-pulse"></div>
+            <div class="imdb-suggest-info">
+              <div class="skeleton-title skeleton-pulse"></div>
+              <div class="skeleton-meta skeleton-pulse"></div>
+            </div>
+          </div>
+        `;
+      }
+      dropdownEl.innerHTML = html;
+      dropdownEl.style.display = 'flex';
+    }
+
     function renderSuggestionsDropdown() {
       const dropdownEl = document.getElementById('imdb-suggestions');
       if (!dropdownEl) return;
@@ -791,7 +819,9 @@
       }
 
       const html = currentSuggestions.map((sug, idx) => {
-        const posterUrl = sug.image || 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=300';
+        // Route poster through server proxy for caching & optimization
+        const rawPoster = sug.image || '';
+        const posterUrl = rawPoster ? `/api/img-proxy?url=${encodeURIComponent(rawPoster)}` : 'https://images.unsplash.com/photo-1485846234645-a62644f84728?q=80&w=300';
         const typeBadge = sug.type ? `<span class="imdb-suggest-type">${sug.type}</span>` : '';
         const yearInfo = sug.year ? `<span class="imdb-suggest-year">${sug.year}</span>` : '';
         const starsText = sug.stars ? `<span class="imdb-suggest-stars">${escapeHtml(sug.stars)}</span>` : '';
@@ -834,7 +864,7 @@
         dropdownEl.style.display = 'none';
         dropdownEl.innerHTML = '';
       }
-      currentSuggestions = [];
+      // Preserve currentSuggestions so focus can re-render them instantly
       activeSuggestionIndex = -1;
     }
 

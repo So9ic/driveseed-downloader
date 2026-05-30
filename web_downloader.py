@@ -45,6 +45,10 @@ from collections import OrderedDict
 IMDB_SUGGEST_CACHE = OrderedDict()
 IMDB_SUGGEST_CACHE_MAX = 500
 
+# Server-side image proxy LRU cache for IMDb poster thumbnails
+IMG_PROXY_CACHE = OrderedDict()
+IMG_PROXY_CACHE_MAX = 1000
+
 # Core Scraper and Resolver imports
 try:
     from batch_episodes import resolve_link, scrape_links
@@ -1445,6 +1449,50 @@ class APIRequestHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 print(f"[!] Autocomplete proxy error: {e}", flush=True)
             self.send_json([])
+            return
+
+        # 4c. Image Proxy — caches and serves IMDb poster thumbnails through the server
+        if parsed.path == '/api/img-proxy':
+            qs = parse_qs(parsed.query)
+            img_url = qs.get("url", [""])[0].strip()
+            if not img_url or not img_url.startswith("https://"):
+                self.send_response(400)
+                self.end_headers()
+                return
+
+            # Serve from in-memory cache if available
+            if img_url in IMG_PROXY_CACHE:
+                cached = IMG_PROXY_CACHE[img_url]
+                IMG_PROXY_CACHE.move_to_end(img_url)
+                self.send_response(200)
+                self.send_header('Content-Type', cached['type'])
+                self.send_header('Cache-Control', 'public, max-age=86400')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(cached['data'])
+                return
+
+            try:
+                resp = SESSION.get(img_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=4)
+                if resp.status_code == 200:
+                    content_type = resp.headers.get('Content-Type', 'image/jpeg')
+                    img_data = resp.content
+                    # LRU eviction
+                    while len(IMG_PROXY_CACHE) >= IMG_PROXY_CACHE_MAX:
+                        IMG_PROXY_CACHE.popitem(last=False)
+                    IMG_PROXY_CACHE[img_url] = {'data': img_data, 'type': content_type}
+
+                    self.send_response(200)
+                    self.send_header('Content-Type', content_type)
+                    self.send_header('Cache-Control', 'public, max-age=86400')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    self.wfile.write(img_data)
+                    return
+            except Exception as e:
+                print(f"[!] Image proxy error: {e}", flush=True)
+            self.send_response(502)
+            self.end_headers()
             return
 
         # 5. Server-Sent Events (SSE) Search Card Streamer!
