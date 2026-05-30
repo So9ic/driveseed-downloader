@@ -736,30 +736,25 @@
           sug.title.toLowerCase().includes(cacheKey)
         );
         if (filtered.length > 0) {
-          if (activeSuggestController) {
-            activeSuggestController.abort();
-            activeSuggestController = null;
-          }
+          // Render the prefix-filtered results instantly
           suggestionsClientCache[cacheKey] = filtered;
           currentSuggestions = filtered;
           activeSuggestionIndex = -1;
           renderSuggestionsDropdown();
-          return;
+          // DON'T return — also fire a background fetch to get exact results for this query
         }
       }
 
-      // Cancel any inflight suggestion request to avoid network overlap!
-      if (activeSuggestController) {
-        activeSuggestController.abort();
-        activeSuggestController = null;
+      // Let previous in-flight requests complete in the background to populate the cache!
+      // Only show skeleton if no suggestions are currently visible (stale-while-revalidate)
+      if (currentSuggestions.length === 0) {
+        showSuggestionSkeleton(dropdownEl);
       }
 
-      // Show premium skeleton loader instantly while waiting for network
-      showSuggestionSkeleton(dropdownEl);
-
-      // Create AbortController immediately to dispatch fetch with 0ms delay!
-      activeSuggestController = new AbortController();
-      const signal = activeSuggestController.signal;
+      // Create a NEW AbortController for this fetch (previous ones keep running to cache)
+      const controller = new AbortController();
+      const signal = controller.signal;
+      activeSuggestController = controller;
       
       // Attempt DIRECT IMDb CDN call first (ultra-low latency, typically 10-40ms!)
       const directUrl = `https://v3.sg.media-imdb.com/suggestion/titles/x/${encodeURIComponent(query.toLowerCase())}.json`;
@@ -785,7 +780,7 @@
           const finalResults = results.slice(0, 6);
           suggestionsClientCache[cacheKey] = finalResults;
           
-          // Double check if query didn't change during the quick fetch
+          // Only render if this is still the latest query (prevents older responses overwriting newer ones)
           const currentQuery = document.getElementById('search-box')?.value || '';
           if (currentQuery.trim().toLowerCase() !== cacheKey) return;
 
@@ -793,9 +788,10 @@
           activeSuggestionIndex = -1;
           renderSuggestionsDropdown();
         })
-        .catch(() => {
+        .catch((err) => {
+          if (err.name === 'AbortError') return;
           // Seamless fallback to our Python proxy server if direct fetch is blocked
-          fetch(`/api/suggest?q=${encodeURIComponent(query)}`, { signal })
+          fetch(`/api/suggest?q=${encodeURIComponent(query)}`)
             .then(res => res.json())
             .then(data => {
               const results = data || [];
@@ -808,11 +804,9 @@
               activeSuggestionIndex = -1;
               renderSuggestionsDropdown();
             })
-            .catch((err) => {
-              if (err.name === 'AbortError') return;
-              currentSuggestions = [];
-              activeSuggestionIndex = -1;
-              dropdownEl.style.display = 'none';
+            .catch((err2) => {
+              if (err2.name === 'AbortError') return;
+              // Don't clear visible suggestions on error — keep stale results
             });
         });
     }
