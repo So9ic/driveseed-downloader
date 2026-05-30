@@ -78,24 +78,51 @@ def save_imdb_suggest_cache_to_file():
 SEARCH_LOGS_FILE = os.path.join('static', 'search_logs.txt')
 LOG_LOCK = threading.Lock()
 
-def log_search_query(query):
-    """Log search query with an IST timestamp into a persistent text file."""
-    if not query:
-        return
+DEBOUNCE_TIMER = None
+DEBOUNCE_QUERY = None
+DEBOUNCE_LOCK = threading.Lock()
+
+def write_debounced_log():
+    """Timer callback to write the final stabilized query to the search logs file."""
+    global DEBOUNCE_QUERY
     try:
-        os.makedirs(os.path.dirname(SEARCH_LOGS_FILE), exist_ok=True)
-        import datetime
-        utc_now = datetime.datetime.utcnow()
-        ist_offset = datetime.timedelta(hours=5, minutes=30)
-        ist_now = utc_now + ist_offset
-        timestamp = ist_now.strftime("%Y-%m-%d %H:%M:%S")
-        log_line = f"[{timestamp} IST] {query}\n"
-        
-        with LOG_LOCK:
-            with open(SEARCH_LOGS_FILE, 'a', encoding='utf-8') as f:
-                f.write(log_line)
+        with DEBOUNCE_LOCK:
+            query_to_write = DEBOUNCE_QUERY
+            DEBOUNCE_QUERY = None
+            
+        if query_to_write:
+            os.makedirs(os.path.dirname(SEARCH_LOGS_FILE), exist_ok=True)
+            import datetime
+            utc_now = datetime.datetime.utcnow()
+            ist_offset = datetime.timedelta(hours=5, minutes=30)
+            ist_now = utc_now + ist_offset
+            timestamp = ist_now.strftime("%Y-%m-%d %H:%M:%S")
+            log_line = f"[{timestamp} IST] {query_to_write}\n"
+            
+            with LOG_LOCK:
+                with open(SEARCH_LOGS_FILE, 'a', encoding='utf-8') as f:
+                    f.write(log_line)
     except Exception as e:
         print(f"[-] Error writing search logs: {e}", flush=True)
+
+def log_search_query(query):
+    """Log search query with an IST timestamp using a thread-safe debounce timer to filter typing sequence clutter."""
+    global DEBOUNCE_TIMER, DEBOUNCE_QUERY
+    if not query or len(query.strip()) < 2:
+        return
+        
+    query_str = query.strip()
+    
+    with DEBOUNCE_LOCK:
+        # Cancel any pending log timer
+        if DEBOUNCE_TIMER is not None:
+            DEBOUNCE_TIMER.cancel()
+            
+        DEBOUNCE_QUERY = query_str
+        
+        # Start a new timer for 1.8 seconds (giving the user plenty of time to finish typing)
+        DEBOUNCE_TIMER = threading.Timer(1.8, write_debounced_log)
+        DEBOUNCE_TIMER.start()
 
 # Core Scraper and Resolver imports
 try:
@@ -1313,6 +1340,19 @@ class APIRequestHandler(BaseHTTPRequestHandler):
                     self.wfile.write(b"No search logs found yet.")
             except Exception as e:
                 self.wfile.write(f"Error reading logs: {e}".encode('utf-8'))
+            return
+
+        # 1c-3. Record search log silently for cached local searches
+        if parsed.path == '/api/logs/record':
+            qs = parse_qs(parsed.query)
+            query = qs.get("q", [""])[0].strip()
+            if query:
+                log_search_query(query)
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(b"OK")
             return
 
         # 1d. Serve static CSS, JS, images, etc. dynamically from the static directory with long-term caching

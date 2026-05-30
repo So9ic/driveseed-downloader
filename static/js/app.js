@@ -1001,6 +1001,9 @@
       if (cachedResults && cachedResults.length > 0) {
         allFetchedResults = cachedResults;
         filterAndRenderResultsLocally(q);
+        
+        // Trigger server-side logging for cached searches silently in the background
+        fetch(`/api/logs/record?q=${encodeURIComponent(q)}`).catch(() => {});
         return;
       }
 
