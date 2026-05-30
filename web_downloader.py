@@ -1093,7 +1093,6 @@ def force_refresh_trending_cache():
                     if not thumb_url:
                         continue
                     try:
-                        import hashlib
                         url_hash = hashlib.md5(thumb_url.encode('utf-8')).hexdigest()
                         cache_path = os.path.join('static', 'thumbnail_cache', f"{url_hash}.webp")
                         # If not already cached, pre-fetch and optimize it!
@@ -1311,7 +1310,6 @@ class APIRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(b"Missing url parameter")
                 return
 
-            import hashlib
             import io
             from PIL import Image
             
