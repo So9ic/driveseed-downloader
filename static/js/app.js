@@ -601,7 +601,6 @@
       }
     }, true);
 
-    let suggestionDebounceTimer = null;
     let currentSuggestions = [];
     let activeSuggestionIndex = -1;
     const suggestionsClientCache = {};
@@ -704,7 +703,6 @@
           activeSuggestController.abort();
           activeSuggestController = null;
         }
-        clearTimeout(suggestionDebounceTimer);
         currentSuggestions = [];
         activeSuggestionIndex = -1;
         dropdownEl.style.display = 'none';
@@ -716,7 +714,6 @@
 
       // Zero-latency instant rendering if exact match cached client-side!
       if (suggestionsClientCache[cacheKey]) {
-        clearTimeout(suggestionDebounceTimer);
         if (activeSuggestController) {
           activeSuggestController.abort();
           activeSuggestController = null;
@@ -739,7 +736,6 @@
           sug.title.toLowerCase().includes(cacheKey)
         );
         if (filtered.length > 0) {
-          clearTimeout(suggestionDebounceTimer);
           if (activeSuggestController) {
             activeSuggestController.abort();
             activeSuggestController = null;
@@ -761,67 +757,64 @@
       // Show premium skeleton loader instantly while waiting for network
       showSuggestionSkeleton(dropdownEl);
 
-      // Fast 60ms debounce — server-side cache makes responses near-instant
-      clearTimeout(suggestionDebounceTimer);
-      suggestionDebounceTimer = setTimeout(() => {
-        // Create AbortController inside the timeout so it only exists when fetch is actually dispatched
-        activeSuggestController = new AbortController();
-        const signal = activeSuggestController.signal;
-        // Attempt DIRECT IMDb CDN call first (ultra-low latency, typically 10-40ms!)
-        const directUrl = `https://v3.sg.media-imdb.com/suggestion/titles/x/${encodeURIComponent(query.toLowerCase())}.json`;
-        
-        fetch(directUrl, { signal })
-          .then(res => {
-            if (!res.ok) throw new Error("Direct fetch failed");
-            return res.json();
-          })
-          .then(data => {
-            const results = [];
-            for (const item of (data.d || [])) {
-              if (!item.l) continue;
-              results.push({
-                id: item.id || '',
-                title: item.l || '',
-                year: item.y || '',
-                stars: item.s || '',
-                type: item.q || 'Movie',
-                image: item.i?.imageUrl || ''
-              });
-            }
-            const finalResults = results.slice(0, 6);
-            suggestionsClientCache[cacheKey] = finalResults;
-            
-            // Double check if query didn't change during the quick fetch
-            const currentQuery = document.getElementById('search-box')?.value || '';
-            if (currentQuery.trim().toLowerCase() !== cacheKey) return;
+      // Create AbortController immediately to dispatch fetch with 0ms delay!
+      activeSuggestController = new AbortController();
+      const signal = activeSuggestController.signal;
+      
+      // Attempt DIRECT IMDb CDN call first (ultra-low latency, typically 10-40ms!)
+      const directUrl = `https://v3.sg.media-imdb.com/suggestion/titles/x/${encodeURIComponent(query.toLowerCase())}.json`;
+      
+      fetch(directUrl, { signal })
+        .then(res => {
+          if (!res.ok) throw new Error("Direct fetch failed");
+          return res.json();
+        })
+        .then(data => {
+          const results = [];
+          for (const item of (data.d || [])) {
+            if (!item.l) continue;
+            results.push({
+              id: item.id || '',
+              title: item.l || '',
+              year: item.y || '',
+              stars: item.s || '',
+              type: item.q || 'Movie',
+              image: item.i?.imageUrl || ''
+            });
+          }
+          const finalResults = results.slice(0, 6);
+          suggestionsClientCache[cacheKey] = finalResults;
+          
+          // Double check if query didn't change during the quick fetch
+          const currentQuery = document.getElementById('search-box')?.value || '';
+          if (currentQuery.trim().toLowerCase() !== cacheKey) return;
 
-            currentSuggestions = finalResults;
-            activeSuggestionIndex = -1;
-            renderSuggestionsDropdown();
-          })
-          .catch(() => {
-            // Seamless fallback to our Python proxy server if direct fetch is blocked
-            fetch(`/api/suggest?q=${encodeURIComponent(query)}`, { signal })
-              .then(res => res.json())
-              .then(data => {
-                const results = data || [];
-                suggestionsClientCache[cacheKey] = results;
-                
-                const currentQuery = document.getElementById('search-box')?.value || '';
-                if (currentQuery.trim().toLowerCase() !== cacheKey) return;
+          currentSuggestions = finalResults;
+          activeSuggestionIndex = -1;
+          renderSuggestionsDropdown();
+        })
+        .catch(() => {
+          // Seamless fallback to our Python proxy server if direct fetch is blocked
+          fetch(`/api/suggest?q=${encodeURIComponent(query)}`, { signal })
+            .then(res => res.json())
+            .then(data => {
+              const results = data || [];
+              suggestionsClientCache[cacheKey] = results;
+              
+              const currentQuery = document.getElementById('search-box')?.value || '';
+              if (currentQuery.trim().toLowerCase() !== cacheKey) return;
 
-                currentSuggestions = results;
-                activeSuggestionIndex = -1;
-                renderSuggestionsDropdown();
-              })
-              .catch((err) => {
-                if (err.name === 'AbortError') return;
-                currentSuggestions = [];
-                activeSuggestionIndex = -1;
-                dropdownEl.style.display = 'none';
-              });
-          });
-      }, 60);
+              currentSuggestions = results;
+              activeSuggestionIndex = -1;
+              renderSuggestionsDropdown();
+            })
+            .catch((err) => {
+              if (err.name === 'AbortError') return;
+              currentSuggestions = [];
+              activeSuggestionIndex = -1;
+              dropdownEl.style.display = 'none';
+            });
+        });
     }
 
     function showSuggestionSkeleton(dropdownEl) {
