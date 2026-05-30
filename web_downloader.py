@@ -371,6 +371,9 @@ class DownloaderBackend:
         self._done_count = 0
         self._fail_count = 0
         self._total_count = 0
+        
+        self.client_id = None
+        self.active_title = 'Direct URL Input'
 
         # Start MODLIST polling loop
         self._launch_modlist_poller()
@@ -571,6 +574,21 @@ class DownloaderBackend:
                         card.set_method(item.get("method", ""))
                         card.item_data = item
                         card.url = item["download_url"]
+
+                        # Log the resolved direct link/download link instantly
+                        uid = self.client_id if self.client_id else "anonymous"
+                        active_title = getattr(self, 'active_title', 'Direct URL Input')
+                        clean_title = clean_log_title(active_title)
+                        dl_url = item["download_url"]
+                        method = item.get("method", "")
+                        
+                        event_msg = (
+                            f"👤 {uid:<10} | ⚙️ RESOLVED  | \"{clean_title}\"\n"
+                            f"├─► Filename: \"{fname}\"\n"
+                            f"├─► Method: \"{method}\"\n"
+                            f"└─► Direct Link: {dl_url}"
+                        )
+                        log_instant_event(event_msg)
 
                         if fname in existing:
                             card.set_detail("Already downloaded")
@@ -868,6 +886,20 @@ class DownloaderBackend:
             card.set_action("Retrying…")
         else:
             card.set_action("Waiting…")
+
+        # Log when the manual Telegram download is clicked and triggered
+        uid = self.client_id if self.client_id else "anonymous"
+        active_title = getattr(self, 'active_title', 'Direct URL Input')
+        clean_title = clean_log_title(active_title)
+        fname = card.filename
+        dl_url = item.get("download_url", "")
+        
+        event_msg = (
+            f"👤 {uid:<10} | 🚀 TELEGRAM  | \"{clean_title}\"\n"
+            f"├─► Episode: \"{fname}\"\n"
+            f"└─► Telegram Link: {dl_url}"
+        )
+        log_instant_event(event_msg)
 
         item["attempted_manual"] = True
         threading.Thread(
@@ -1356,7 +1388,7 @@ class APIRequestHandler(BaseHTTPRequestHandler):
             })
             return
 
-        # 1c-2. Search Logs display endpoint (Latest logs at the top)
+        # 1c-2. Search Logs display endpoint (Latest logs at the top, chronological lines inside each block)
         if parsed.path == '/logs' or parsed.path == '/api/logs':
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain; charset=utf-8')
@@ -1367,9 +1399,23 @@ class APIRequestHandler(BaseHTTPRequestHandler):
                 if os.path.exists(SEARCH_LOGS_FILE):
                     with open(SEARCH_LOGS_FILE, 'r', encoding='utf-8') as f:
                         lines = f.readlines()
-                    # Reverse so that latest logs are at the top
-                    reversed_lines = reversed(lines)
-                    self.wfile.write("".join(reversed_lines).encode('utf-8'))
+                    
+                    # Group lines into discrete event blocks (each block starts with a '[' timestamp)
+                    events = []
+                    current_event = []
+                    for line in lines:
+                        if line.startswith('['):
+                            if current_event:
+                                events.append("".join(current_event))
+                                current_event = []
+                        current_event.append(line)
+                    if current_event:
+                        events.append("".join(current_event))
+                    
+                    # Reverse the list of event blocks so that the latest events are at the top,
+                    # while maintaining normal forward chronological order within each event!
+                    reversed_events = reversed(events)
+                    self.wfile.write("".join(reversed_events).encode('utf-8'))
                 else:
                     self.wfile.write(b"No search logs found yet.")
             except Exception as e:
@@ -1908,6 +1954,8 @@ class APIRequestHandler(BaseHTTPRequestHandler):
                     )
                 log_instant_event(event_msg)
 
+                DOWNLOAD_MGR.client_id = client_id
+                DOWNLOAD_MGR.active_title = title
                 DOWNLOAD_MGR.start_pipeline(url, output_dir)
                 self.send_json({"status": "success", "message": "Pipeline initiated"})
             except Exception as e:
@@ -1931,6 +1979,23 @@ class APIRequestHandler(BaseHTTPRequestHandler):
                     return
 
                 card.mark_pending()
+                
+                # Log the retry event
+                uid = DOWNLOAD_MGR.client_id if DOWNLOAD_MGR.client_id else "anonymous"
+                active_title = getattr(DOWNLOAD_MGR, 'active_title', 'Direct URL Input')
+                clean_title = clean_log_title(active_title)
+                fname = card.filename
+                dl_url = item.get("download_url", "")
+                method = item.get("method", "")
+                
+                event_msg = (
+                    f"👤 {uid:<10} | 🔄 RETRY     | \"{clean_title}\"\n"
+                    f"├─► Episode: \"{fname}\"\n"
+                    f"├─► Method: \"{method}\"\n"
+                    f"└─► Direct Link: {dl_url}"
+                )
+                log_instant_event(event_msg)
+
                 if item.get("method") == "TELEGRAM":
                     DOWNLOAD_MGR.start_telegram_manual(idx, is_retry=True)
                 else:
