@@ -148,9 +148,9 @@
       resultsDiv.style.display = 'block';
 
       if (!trendingMoviesList || trendingMoviesList.length === 0) {
-        // Render 2 skeleton marquee rows while fetching
+        // Render 3 skeleton marquee rows while fetching
         let rowsHtml = '';
-        for (let r = 0; r < 2; r++) {
+        for (let r = 0; r < 3; r++) {
           const direction = (r % 2 === 0) ? 'left' : 'right';
           const skeletonsHtml = Array.from({length: 8}).map(() => `
             <div class="movie-card static-overlay skeleton-card" style="border: none;">
@@ -177,8 +177,8 @@
         return;
       }
 
-      // Split into 2 rows
-      const rowCount = 2;
+      // Split into 3 rows
+      const rowCount = 3;
       const moviesPerRow = Math.ceil(trendingMoviesList.length / rowCount);
       let rowsHtml = '';
 
@@ -253,14 +253,240 @@
       track.classList.toggle('paused');
     }
 
+    // Registry of active marquee cleanup functions — cancelled before re-init
+    let _marqueeCleanups = [];
+
     function initInteractiveMarquees() {
-      // With pure CSS hardware acceleration, JS does not run any heavy rendering loops!
-      // We only execute a clean layout fade-in on the next animation frame to prevent synchronous reflows.
-      requestAnimationFrame(() => {
-        document.querySelectorAll('.marquee-row-wrapper').forEach(wrapper => {
-          if (wrapper) wrapper.classList.add('visible');
+      // Kill all previous marquee loops + observers before creating new ones
+      _marqueeCleanups.forEach(fn => fn());
+      _marqueeCleanups = [];
+
+      // Cache hover-device detection once (doesn't change at runtime)
+      const isHoverDevice = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+      const tracks = document.querySelectorAll('.marquee-track');
+      tracks.forEach(track => {
+        // Prevent duplicate initialization
+        if (track.dataset.initialized) return;
+        track.dataset.initialized = 'true';
+
+        const isLeft = track.classList.contains('left');
+        const baseSpeed = isLeft ? -0.8 : 0.8;
+        
+        // Cache parent wrapper reference once (avoids DOM traversal every frame)
+        const wrapper = track.closest('.marquee-row-wrapper');
+        
+        let x = 0;
+        let velocity = 0;
+        let isDragging = false;
+        let hasMoved = false;
+        let isScrolling = false;
+        let trackPaused = false;
+        let alive = true; // kill-switch for the tick loop
+        
+        let startX = 0;
+        let startY = 0;
+        let startTranslate = 0;
+        let lastX = 0;
+        let lastTime = 0;
+        let cachedWrapDist = 0;
+
+        // Force disable keyframe animations so they don't fight custom translate3d
+        track.style.animation = 'none';
+        track.style.transition = 'none';
+
+        // Cache wrap distance — recalculate only on resize, not every frame
+        // Detects actual CSS gap dynamically instead of hardcoding
+        function measureWrapDist() {
+          if (!track.isConnected) return;
+          const group = track.querySelector('.marquee-group');
+          if (!group) { cachedWrapDist = 0; return; }
+          const gap = parseFloat(getComputedStyle(track).gap) || 24;
+          cachedWrapDist = group.offsetWidth + gap;
+        }
+        let resizeListener = () => { measureWrapDist(); };
+        window.addEventListener('resize', resizeListener);
+
+        function wrapOffset(val) {
+          if (cachedWrapDist <= 0) return val;
+          val = val % cachedWrapDist;
+          if (val > 0) val -= cachedWrapDist;
+          return val;
+        }
+
+        function onStart(clientX, clientY) {
+          isDragging = true;
+          hasMoved = false;
+          isScrolling = false;
+          velocity = 0;
+          startX = clientX;
+          startY = clientY || 0;
+          startTranslate = x;
+          lastX = clientX;
+          lastTime = performance.now();
+          
+          window.addEventListener('mousemove', onMouseMoveWindow);
+          window.addEventListener('mouseup', onMouseUpWindow);
+        }
+
+        function onMove(clientX, clientY, e) {
+          if (!isDragging) return;
+          
+          // Detect horizontal vs vertical scroll swipe intention on touch devices
+          if (clientY !== undefined && !isScrolling) {
+            const dy = Math.abs(clientY - startY);
+            const dx = Math.abs(clientX - startX);
+            if (dy > dx && dy > 10) {
+              isScrolling = true;
+              isDragging = false;
+              return;
+            }
+          }
+
+          if (isScrolling) return;
+
+          // Prevent vertical page scroll jiggle during active horizontal swipe
+          if (e && e.cancelable) {
+            e.preventDefault();
+          }
+
+          const dx = clientX - startX;
+          
+          if (Math.abs(dx) > 5) {
+            hasMoved = true;
+            // Clear any active mobile tap highlights only when a real swipe/drag gesture is detected
+            if (typeof resetActiveTappedCard === 'function') {
+              resetActiveTappedCard();
+            }
+          }
+          
+          x = wrapOffset(startTranslate + dx);
+          
+          const now = performance.now();
+          const dt = now - lastTime;
+          const dist = clientX - lastX;
+          if (dt > 0) {
+            const instantVel = (dist / dt) * 16.666;
+            velocity = velocity * 0.6 + instantVel * 0.4;
+          }
+          
+          lastX = clientX;
+          lastTime = now;
+          track.style.transform = 'translate3d(' + x + 'px,0,0)';
+        }
+
+        function onEnd() {
+          if (!isDragging) return;
+          isDragging = false;
+          
+          // Flag to prevent card click from firing after a real drag
+          if (hasMoved) {
+            window._marqueeJustDragged = true;
+            setTimeout(() => { window._marqueeJustDragged = false; }, 100);
+          }
+          
+          window.removeEventListener('mousemove', onMouseMoveWindow);
+          window.removeEventListener('mouseup', onMouseUpWindow);
+        }
+
+        function onMouseMoveWindow(e) {
+          onMove(e.clientX, e.clientY, e);
+        }
+
+        function onMouseUpWindow() {
+          onEnd();
+        }
+
+        // Mouse Event Listeners
+        track.addEventListener('mousedown', (e) => {
+          if (e.button !== 0) return;
+          onStart(e.clientX, e.clientY);
+        });
+
+        // Prevent native browser ghost image dragging behavior
+        track.addEventListener('dragstart', (e) => {
+          e.preventDefault();
+        });
+
+        // Touch Event Listeners
+        track.addEventListener('touchstart', (e) => {
+          onStart(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: true });
+
+        track.addEventListener('touchmove', (e) => {
+          onMove(e.touches[0].clientX, e.touches[0].clientY, e);
+        }, { passive: false });
+
+        track.addEventListener('touchend', () => {
+          onEnd();
+        });
+
+        // Mirror .paused class changes to a fast boolean (avoids classList.contains per frame)
+        const pauseObserver = new MutationObserver(() => {
+          trackPaused = track.classList.contains('paused');
+        });
+        pauseObserver.observe(track, { attributes: true, attributeFilter: ['class'] });
+
+        // Smooth Physics Autoplay Tick Loop
+        function tick() {
+          // Self-terminate if killed or DOM node was destroyed
+          if (!alive || !track.isConnected) return;
+
+          if (!isDragging) {
+            // Apply momentum deceleration
+            if (Math.abs(velocity) > 0.1) {
+              x += velocity;
+              velocity *= 0.94;
+            } else {
+              velocity = 0;
+            }
+
+            // Hover-pause only on devices with real mouse hover (cached wrapper ref)
+            const isHovered = isHoverDevice && wrapper.matches(':hover');
+            
+            if (!isHovered && !trackPaused) {
+              x += baseSpeed;
+            }
+            
+            x = wrapOffset(x);
+            track.style.transform = 'translate3d(' + x + 'px,0,0)';
+          }
+          
+          requestAnimationFrame(tick);
+        }
+
+        // Defer initial measurement and loop start to next frame to avoid synchronous layout thrashing
+        // style resolutions happen on paint pass, completely avoiding layout thrashing!
+        requestAnimationFrame(() => {
+          if (!alive || !track.isConnected) return;
+          measureWrapDist();
+          tick();
+          
+          // Smooth fade-in once the first frame has successfully calculated layouts & translates.
+          // completely hides any layout-settling or frame drops from the user's vision!
+          if (wrapper) {
+            wrapper.classList.add('visible');
+          }
+        });
+
+        // Register cleanup for this track
+        _marqueeCleanups.push(() => {
+          alive = false;
+          pauseObserver.disconnect();
+          window.removeEventListener('resize', resizeListener);
         });
       });
+
+      // Progressively load all remaining off-screen images after 750ms so visible cards get 100% initial bandwidth
+      setTimeout(() => {
+        document.querySelectorAll('.lazy-showcase-img').forEach(img => {
+          if (img.dataset.src) {
+            img.src = img.dataset.src;
+            img.removeAttribute('data-src');
+            img.classList.remove('lazy-showcase-img');
+          }
+        });
+      }, 750);
     }
 
     function selectCategory(cat) {

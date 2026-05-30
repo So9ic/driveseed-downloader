@@ -1644,30 +1644,14 @@
       animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    @keyframes marquee-scroll-left {
-      0% { transform: translate3d(0, 0, 0); }
-      100% { transform: translate3d(-50%, 0, 0); }
-    }
-
-    @keyframes marquee-scroll-right {
-      0% { transform: translate3d(-50%, 0, 0); }
-      100% { transform: translate3d(0, 0, 0); }
-    }
-
     .marquee-row-wrapper {
-      overflow-x: auto;
-      overflow-y: hidden;
-      scrollbar-width: none; /* Hide standard scrollbar */
-      -webkit-overflow-scrolling: touch; /* Butter-smooth iOS mobile inertial swipe */
+      overflow: hidden;
       width: 100%;
       position: relative;
       padding: 10px 0;
       opacity: 0;
       transition: opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1);
       will-change: opacity;
-    }
-    .marquee-row-wrapper::-webkit-scrollbar {
-      display: none; /* Hide Chrome/Safari scrollbars */
     }
 
     .marquee-row-wrapper.visible {
@@ -1706,30 +1690,18 @@
       transform: translate3d(0, 0, 0);
       backface-visibility: hidden;
       -webkit-backface-visibility: hidden;
-      cursor: pointer;
+      cursor: grab;
       user-select: none;
     }
 
-    .marquee-track.left {
-      animation: marquee-scroll-left 45s linear infinite;
-    }
-
-    .marquee-track.right {
-      animation: marquee-scroll-right 45s linear infinite;
-    }
-
-    /* Pause scrolling on hover or active click/tap interactively */
-    .marquee-track:hover,
-    .marquee-track:active,
-    .marquee-track.paused {
-      animation-play-state: paused;
+    .marquee-track:active {
+      cursor: grabbing;
     }
 
     .marquee-group {
       display: flex;
       gap: 24px;
       flex-shrink: 0;
-      will-change: transform;
     }
 
 
