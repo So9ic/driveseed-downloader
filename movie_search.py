@@ -249,12 +249,48 @@ def clean_html_to_text(html_content):
     return text
 
 
+def normalize_detail_url(detail_url):
+    """
+    Dynamically swaps the host of a movie detail URL to the latest resolved live domain.
+    This guarantees that cached searches never break when site owners change domains.
+    """
+    if not detail_url:
+        return detail_url
+    try:
+        from urllib.parse import urlparse, urlunparse
+        parsed = urlparse(detail_url)
+        netloc_lower = parsed.netloc.lower()
+        
+        # Get latest resolved live domains
+        live_domains = resolve_search_domains()
+        
+        target_domain = None
+        if "animeflix" in netloc_lower:
+            target_domain = live_domains.get("animeflix")
+        elif "moviesmod" in netloc_lower:
+            target_domain = live_domains.get("hollywood")
+        elif "moviesleech" in netloc_lower:
+            target_domain = live_domains.get("bollywood")
+            
+        if target_domain:
+            target_parsed = urlparse(target_domain)
+            new_parsed = parsed._replace(scheme=target_parsed.scheme, netloc=target_parsed.netloc)
+            normalized_url = urlunparse(new_parsed)
+            if normalized_url != detail_url:
+                print(f"[+] Dynamic domain migration: {detail_url} -> {normalized_url}", flush=True)
+            return normalized_url
+    except Exception as e:
+        print(f"[-] Error normalizing detail URL: {e}", flush=True)
+    return detail_url
+
+
 def extract_download_options(detail_url):
     """
     Fetch a movie detail page and extract clean download links mapped to their seasons/qualities.
     Uses backward-traversal heuristic to find corresponding heading tags.
     """
     import html as html_parser
+    detail_url = normalize_detail_url(detail_url)
     print(f"[*] Extracting download options from: {detail_url}")
     options = OptionsList()
     try:
