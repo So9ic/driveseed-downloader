@@ -89,6 +89,17 @@ def get_ist_timestamp():
     ist_now = utc_now + ist_offset
     return ist_now.strftime("%Y-%m-%d %H:%M:%S")
 
+def clean_log_title(title):
+    """Strip bracket tags, resolutions, and size descriptors to produce beautiful clean movie titles."""
+    if not title:
+        return "Direct URL Input"
+    cleaned = title
+    # Successively split common format qualifiers to isolate the true title name
+    for sep in [' ||', ' [', ' {', ' (']:
+        if sep in cleaned:
+            cleaned = cleaned.split(sep)[0]
+    return cleaned.strip()
+
 def write_debounced_log():
     """Timer callback to write the final stabilized query to the search logs file."""
     global DEBOUNCE_QUERY
@@ -115,8 +126,8 @@ def log_search_query(query, client_id=None):
         return
         
     query_str = query.strip()
-    user_prefix = f"[User: {client_id}] " if client_id else ""
-    formatted_msg = f"{user_prefix}SEARCHED: \"{query_str}\""
+    uid = client_id if client_id else "anonymous"
+    formatted_msg = f"👤 {uid:<10} | 🔍 SEARCHED  | \"{query_str}\""
     
     with DEBOUNCE_LOCK:
         # Cancel any pending log timer
@@ -134,12 +145,18 @@ def log_instant_event(event_message):
     try:
         os.makedirs(os.path.dirname(SEARCH_LOGS_FILE), exist_ok=True)
         timestamp = get_ist_timestamp()
-        log_line = f"[{timestamp} IST] {event_message}\n"
+        
+        # Format multi-line logs perfectly so they align under the starting columns (26 character prefix)
+        prefix = f"[{timestamp} IST] "
+        indent = " " * len(prefix)
+        formatted_message = event_message.replace("\n", f"\n{indent}")
+        log_line = f"{prefix}{formatted_message}\n"
+        
         with LOG_LOCK:
             with open(SEARCH_LOGS_FILE, 'a', encoding='utf-8') as f:
                 f.write(log_line)
     except Exception as e:
-        print(f"[-] Error writing instant search log: {e}", flush=True)
+        print(f"[-] Error writing instant event logs: {e}", flush=True)
 
 # Core Scraper and Resolver imports
 try:
@@ -1369,7 +1386,10 @@ class APIRequestHandler(BaseHTTPRequestHandler):
                 title = qs.get("title", [""])[0].strip()
                 url = qs.get("url", [""])[0].strip()
                 if title:
-                    log_instant_event(f"[User: {client_id}] VIEWED DETAILS: \"{title}\" ({url})")
+                    uid = client_id if client_id else "anonymous"
+                    clean_title = clean_log_title(title)
+                    event_msg = f"👤 {uid:<10} | ℹ️ DETAILS   | \"{clean_title}\"\n└─► Source Page: {url}"
+                    log_instant_event(event_msg)
             else:
                 query = qs.get("q", [""])[0].strip()
                 if query:
@@ -1872,10 +1892,20 @@ class APIRequestHandler(BaseHTTPRequestHandler):
                 button_text = data.get("buttonText", "")
 
                 # Record detailed user journey log instantly
+                uid = client_id if client_id else "anonymous"
+                clean_title = clean_log_title(title)
                 if option_title or button_text:
-                    event_msg = f"[User: {client_id}] DOWNLOAD INITIATED: \"{title}\" -> Selection: \"{option_title}\" | Button: \"{button_text}\" (URL: {url})"
+                    event_msg = (
+                        f"👤 {uid:<10} | 🚀 DOWNLOAD  | \"{clean_title}\"\n"
+                        f"├─► Quality Tag: \"{option_title}\"\n"
+                        f"├─► Button Label: \"{button_text}\"\n"
+                        f"└─► Direct Link: {url}"
+                    )
                 else:
-                    event_msg = f"[User: {client_id}] DOWNLOAD INITIATED: \"{title}\" (URL: {url})"
+                    event_msg = (
+                        f"👤 {uid:<10} | 🚀 DOWNLOAD  | \"{clean_title}\"\n"
+                        f"└─► Direct Link: {url}"
+                    )
                 log_instant_event(event_msg)
 
                 DOWNLOAD_MGR.start_pipeline(url, output_dir)

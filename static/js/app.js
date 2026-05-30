@@ -1013,7 +1013,7 @@
         filterAndRenderResultsLocally(q);
         
         // Trigger server-side logging for cached searches silently in the background
-        fetch(`/api/logs/record?q=${encodeURIComponent(q)}`).catch(() => {});
+        fetch(`/api/logs/record?q=${encodeURIComponent(q)}&clientId=${encodeURIComponent(getOrCreateClientId())}`).catch(() => {});
         return;
       }
 
