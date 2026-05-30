@@ -1424,13 +1424,9 @@ class APIRequestHandler(BaseHTTPRequestHandler):
                     log_instant_event(event_msg)
             elif log_type == "device_download":
                 title = qs.get("title", [""])[0].strip()
-                url = qs.get("url", [""])[0].strip()
                 uid = client_id if client_id else "anonymous"
                 clean_title = clean_log_title(title)
-                event_msg = (
-                    f"👤 {uid:<10} | ☁️ CLOUD DL   | \"{clean_title}\"\n"
-                    f"└─► Direct Link: {url}"
-                )
+                event_msg = f"👤 {uid:<10} | ☁️ CLOUD DL   | \"{clean_title}\""
                 log_instant_event(event_msg)
             else:
                 query = qs.get("q", [""])[0].strip()
@@ -1937,17 +1933,17 @@ class APIRequestHandler(BaseHTTPRequestHandler):
                 uid = client_id if client_id else "anonymous"
                 clean_title = clean_log_title(title)
                 if option_title or button_text:
-                    event_msg = (
-                        f"👤 {uid:<10} | 🚀 DOWNLOAD  | \"{clean_title}\"\n"
-                        f"├─► Quality Tag: \"{option_title}\"\n"
-                        f"├─► Button Label: \"{button_text}\"\n"
-                        f"└─► Direct Link: {url}"
-                    )
+                    parts = [f"👤 {uid:<10} | 🚀 DOWNLOAD  | \"{clean_title}\""]
+                    if option_title and button_text:
+                        parts.append(f"├─► Quality Tag: \"{option_title}\"")
+                        parts.append(f"└─► Button Label: \"{button_text}\"")
+                    elif option_title:
+                        parts.append(f"└─► Quality Tag: \"{option_title}\"")
+                    else:
+                        parts.append(f"└─► Button Label: \"{button_text}\"")
+                    event_msg = "\n".join(parts)
                 else:
-                    event_msg = (
-                        f"👤 {uid:<10} | 🚀 DOWNLOAD  | \"{clean_title}\"\n"
-                        f"└─► Direct Link: {url}"
-                    )
+                    event_msg = f"👤 {uid:<10} | 🚀 DOWNLOAD  | \"{clean_title}\""
                 log_instant_event(event_msg)
 
                 DOWNLOAD_MGR.client_id = client_id
@@ -1987,8 +1983,7 @@ class APIRequestHandler(BaseHTTPRequestHandler):
                 event_msg = (
                     f"👤 {uid:<10} | 🔄 RETRY     | \"{clean_title}\"\n"
                     f"├─► Episode: \"{fname}\"\n"
-                    f"├─► Method: \"{method}\"\n"
-                    f"└─► Direct Link: {dl_url}"
+                    f"└─► Method: \"{method}\""
                 )
                 log_instant_event(event_msg)
 

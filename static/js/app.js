@@ -1896,10 +1896,28 @@
     }
 
     function logDeviceDownload(filename, url) {
-      const decodedFilename = decodeURIComponent(filename);
-      const decodedUrl = decodeURIComponent(url);
-      fetch(`/api/logs/record?type=device_download&title=${encodeURIComponent(decodedFilename)}&url=${encodeURIComponent(decodedUrl)}&clientId=${encodeURIComponent(getOrCreateClientId())}`).catch(() => {});
+      // Ensure we use keepalive: true to prevent browser from cancelling the fetch on download initiation
+      const logUrl = `/api/logs/record?type=device_download&title=${encodeURIComponent(filename)}&url=${encodeURIComponent(url)}&clientId=${encodeURIComponent(getOrCreateClientId())}`;
+      fetch(logUrl, { keepalive: true }).catch(() => {});
     }
+
+    // Global delegation click listener for download buttons to capture all download events reliably
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.dl-download-btn, .dl-download-btn-partitioned');
+      if (btn) {
+        const url = btn.getAttribute('href');
+        const filename = btn.getAttribute('download');
+
+        // Robust DOM traversal workaround: fall back to class 'dl-filename' innerText if needed
+        const card = btn.closest('.download-card');
+        const filenameFromSpan = card ? card.querySelector('.dl-filename')?.innerText : null;
+        const finalFilename = filename || filenameFromSpan || 'Direct URL Input';
+
+        if (url) {
+          logDeviceDownload(finalFilename, url);
+        }
+      }
+    });
 
     // Polling Downloads status
     function pollDownloads() {
@@ -1938,13 +1956,13 @@
               // Completed with resolved URL — show download button
               if (dl.size) {
                 rightContent = `
-                  <a href="${dl.resolved_url}" download="${dl.filename}" target="_blank" class="dl-download-btn-partitioned" onclick="logDeviceDownload('${encodeURIComponent(dl.filename)}', '${encodeURIComponent(dl.resolved_url)}')">
+                  <a href="${dl.resolved_url}" download="${dl.filename}" target="_blank" class="dl-download-btn-partitioned">
                     <span class="dl-btn-left">☁ Download to Device</span>
                     <span class="dl-btn-right">(${dl.size})</span>
                   </a>
                 `;
               } else {
-                rightContent = `<a href="${dl.resolved_url}" download="${dl.filename}" target="_blank" class="dl-download-btn" onclick="logDeviceDownload('${encodeURIComponent(dl.filename)}', '${encodeURIComponent(dl.resolved_url)}')">☁ Download to Device</a>`;
+                rightContent = `<a href="${dl.resolved_url}" download="${dl.filename}" target="_blank" class="dl-download-btn">☁ Download to Device</a>`;
               }
             } else if (dl.state === 3) {
               // Failed — show retry button
