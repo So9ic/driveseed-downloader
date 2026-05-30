@@ -78,6 +78,14 @@
         lastTouchEnd = now;
       }, { passive: false });
 
+      // High-performance Instant Search Box event listeners
+      const searchBox = document.getElementById('search-box');
+      if (searchBox) {
+        searchBox.addEventListener('keydown', onSearchKeydown);
+        searchBox.addEventListener('input', onSearchInput);
+        searchBox.addEventListener('focus', onSearchFocus);
+      }
+
       // Fetch and render trending showcase marquee on home page
       fetchAndRenderTrendingShowcase();
     });
@@ -622,13 +630,11 @@
 
     // Debounced Search triggers
     let searchDebounceTimer = null;
-    function onSearchKeyup(e) {
-      const q = e.target.value;
-      
-      // Keyboard Navigation for Suggestions Dropdown
+    function onSearchKeydown(e) {
+      // Keyboard Navigation for Suggestions Dropdown (handled instantly on keydown for 60fps responsiveness)
       if (e.key === 'ArrowDown') {
-        e.preventDefault();
         if (currentSuggestions.length > 0) {
+          e.preventDefault(); // Lock cursor inside input
           activeSuggestionIndex = (activeSuggestionIndex + 1) % currentSuggestions.length;
           highlightSuggestion();
         }
@@ -636,8 +642,8 @@
       }
       
       if (e.key === 'ArrowUp') {
-        e.preventDefault();
         if (currentSuggestions.length > 0) {
+          e.preventDefault(); // Lock cursor inside input
           activeSuggestionIndex = (activeSuggestionIndex - 1 + currentSuggestions.length) % currentSuggestions.length;
           highlightSuggestion();
         }
@@ -646,6 +652,7 @@
 
       if (e.key === 'Enter') {
         if (activeSuggestionIndex >= 0 && activeSuggestionIndex < currentSuggestions.length) {
+          e.preventDefault();
           selectSuggestion(activeSuggestionIndex);
         } else {
           clearTimeout(searchDebounceTimer);
@@ -659,13 +666,25 @@
         hideSuggestions();
         return;
       }
+    }
 
-      // Default autocomplete suggestion trigger
+    function onSearchInput(e) {
+      const q = e.target.value;
+      
+      // Auto-trigger suggestions on change instantly (input event handles delete, paste, backspace, etc.)
       handleSuggestions(q);
 
       toggleClearButton();
       clearTimeout(searchDebounceTimer);
       searchDebounceTimer = setTimeout(triggerSearch, 500);
+    }
+
+    function onSearchFocus(e) {
+      const q = e.target.value;
+      if (q.trim().length >= 2) {
+        // Bring back suggestions dropdown immediately on input focus if there is a query
+        handleSuggestions(q);
+      }
     }
 
     function handleSuggestions(query) {
