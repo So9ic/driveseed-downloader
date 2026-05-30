@@ -1321,6 +1321,37 @@ class APIRequestHandler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
 
+    def check_admin_auth(self) -> bool:
+        """Enforce standard HTTP Basic Authentication for sensitive admin endpoints."""
+        import base64
+        admin_user = os.getenv("ADMIN_USERNAME", "admin").strip()
+        admin_pass = os.getenv("ADMIN_PASSWORD", "admin123").strip()
+
+        auth_header = self.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Basic '):
+            self.send_response(401)
+            self.send_header('WWW-Authenticate', 'Basic realm="Admin Logs"')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(b"Unauthorized: Access to logs is restricted to administrator.")
+            return False
+
+        try:
+            encoded_credentials = auth_header.split(' ', 1)[1]
+            decoded_credentials = base64.b64decode(encoded_credentials).decode('utf-8')
+            username, password = decoded_credentials.split(':', 1)
+            if username == admin_user and password == admin_pass:
+                return True
+        except Exception:
+            pass
+
+        self.send_response(401)
+        self.send_header('WWW-Authenticate', 'Basic realm="Admin Logs"')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(b"Unauthorized: Invalid admin credentials.")
+        return False
+
     def do_GET(self):
         parsed = urlparse(self.path)
         
@@ -1376,6 +1407,8 @@ class APIRequestHandler(BaseHTTPRequestHandler):
 
         # 1c-2. Search Logs display endpoint (Latest logs at the top, chronological lines inside each block)
         if parsed.path == '/logs' or parsed.path == '/api/logs':
+            if not self.check_admin_auth():
+                return
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain; charset=utf-8')
             self.send_header('Access-Control-Allow-Origin', '*')
@@ -1646,6 +1679,8 @@ class APIRequestHandler(BaseHTTPRequestHandler):
 
         # 4d. Diagnostics & Storage Stats
         if parsed.path == '/api/storage-stats':
+            if not self.check_admin_auth():
+                return
             try:
                 # 1. Total cached posters count and size
                 cached_posters_count = 0
@@ -1704,6 +1739,8 @@ class APIRequestHandler(BaseHTTPRequestHandler):
 
         # 4e. Clear Server Cache
         if parsed.path == '/api/clear-server-cache':
+            if not self.check_admin_auth():
+                return
             try:
                 # Clear in-memory suggestions
                 IMDB_SUGGEST_CACHE.clear()
@@ -2049,16 +2086,29 @@ def main():
     # Initialize and pre-warm persistent trending marquee cache & midnight scheduler
     start_cache_scheduler()
 
+    # Warn user about default credentials in log security
+    admin_user = os.getenv("ADMIN_USERNAME", "admin").strip()
+    admin_pass = os.getenv("ADMIN_PASSWORD", "").strip()
+    if not admin_pass:
+        print("[!] SECURITY NOTICE: ADMIN_PASSWORD is not set in your .env file.", flush=True)
+        print("[!] Access to /logs, /api/logs, /api/storage-stats, and /api/clear-server-cache is restricted.", flush=True)
+        print(f"[!] Default credentials enabled -> Username: '{admin_user}' | Password: 'admin123'", flush=True)
+        print("[!] Please set 'ADMIN_PASSWORD=your_secure_password' in your .env file to customize.\n", flush=True)
+
     port = int(os.environ.get("PORT", 5555))
-    server_address = ('', port)
+    bind_ip = os.environ.get("BIND_ADDRESS", "").strip()
+    server_address = (bind_ip, port)
+    
+    display_ip = bind_ip if bind_ip else "0.0.0.0 (all network interfaces)"
+    print(f"[*] Binding server to {display_ip}:{port}...", flush=True)
     
     try:
         httpd = ThreadedHTTPServer(server_address, APIRequestHandler)
     except OSError as e:
-        print(f"[-] Error starting server on port {port}: {e}", flush=True)
+        print(f"[-] Error starting server on {display_ip}:{port}: {e}", flush=True)
         sys.exit(1)
 
-    print(f"[+] Server started successfully on port {port}", flush=True)
+    print(f"[+] Server started successfully at http://{'localhost' if not bind_ip else bind_ip}:{port}", flush=True)
     
     # Auto-open browser window in background only if not in cloud mode
     if not DOWNLOAD_MGR.cloud_mode:
